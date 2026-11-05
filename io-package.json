@@ -1,0 +1,128 @@
+{
+    "common": {
+        "name": "mobility",
+        "version": "0.0.1",
+        "news": {
+            "0.0.1": {
+                "en": "initial release",
+                "de": "Erstveröffentlichung",
+                "ru": "Начальная версия",
+                "pt": "lançamento inicial",
+                "nl": "Eerste uitgave",
+                "fr": "Première version",
+                "it": "Versione iniziale",
+                "es": "Versión inicial",
+                "pl": "Pierwsze wydanie",
+                "uk": "Початкова версія",
+                "zh-cn": "首次出版"
+            }
+        },
+        "titleLang": {
+            "en": "Mobility",
+            "de": "Mobilität",
+            "ru": "Мобильность",
+            "pt": "Mobilidade",
+            "nl": "Mobiliteit",
+            "fr": "Mobilité",
+            "it": "Mobilità",
+            "es": "Movilidad",
+            "pl": "Mobilność",
+            "uk": "Мобільність",
+            "zh-cn": "移动性"
+        },
+        "desc": {
+            "en": "Ford vehicles (FordConnect Query), Easee chargers and fuel prices (Tankerkönig)",
+            "de": "Ford-Fahrzeuge (FordConnect Query), Easee-Ladegeräte und Kraftstoffpreise (Tankerkönig)",
+            "ru": "Автомобили Ford (FordConnect Query), зарядные устройства Easee и цены на топливо (Tankerkönig)",
+            "pt": "Veículos Ford (FordConnect Query), carregadores Easee e preços de combustível (Tankerkönig)",
+            "nl": "Ford-voertuigen (FordConnect Query), Easee-opladers en brandstofprijzen (Tankerkönig)",
+            "fr": "Véhicules Ford (FordConnect Query), bornes de recharge Easee et prix des carburants (Tankerkönig)",
+            "it": "Veicoli Ford (FordConnect Query), caricabatterie Easee e prezzi del carburante (Tankerkönig)",
+            "es": "Vehículos Ford (Consulta FordConnect), cargadores Easee y precios de combustible (Tankerkönig)",
+            "pl": "Pojazdy Ford (FordConnect Query), ładowarki Easee i ceny paliw (Tankerkönig)",
+            "uk": "Автомобілі Ford (запит FordConnect), зарядні пристрої Easee і ціни на пальне (Tankerkönig)",
+            "zh-cn": "福特汽车 (FordConnect Query)、Easee 充电器和燃油价格 (Tankerkönig)"
+        },
+        "authors": ["Sven-83 <276080681+Sven-83@users.noreply.github.com>"],
+        "keywords": ["ford", "easee", "wallbox", "fuel", "tankerkoenig", "vehicle"],
+        "licenseInformation": {
+            "type": "free",
+            "license": "MIT"
+        },
+        "platform": "Javascript/Node.js",
+        "icon": "mobility.png",
+        "enabled": true,
+        "extIcon": "https://raw.githubusercontent.com/Sven-83/ioBroker.mobility/main/admin/mobility.png",
+        "readme": "https://github.com/Sven-83/ioBroker.mobility/blob/main/README.md",
+        "loglevel": "info",
+        "tier": 3,
+        "mode": "daemon",
+        "type": "vehicle",
+        "compact": true,
+        "connectionType": "cloud",
+        "dataSource": "poll",
+        "adminUI": {
+            "config": "json"
+        },
+        "dependencies": [
+            {
+                "js-controller": ">=6.0.11"
+            }
+        ],
+        "globalDependencies": [
+            {
+                "admin": ">=7.6.17"
+            }
+        ]
+    },
+    "native": {
+        "fuelEnabled": true,
+        "fuelApiKey": "",
+        "fuelStation1Name": "",
+        "fuelStation1Id": "",
+        "fuelStation2Name": "",
+        "fuelStation2Id": "",
+        "fuelInterval": 10,
+        "easeeEnabled": false,
+        "easeeUser": "",
+        "easeePassword": "",
+        "easeeInterval": 60,
+        "easeePrice": 0.35,
+        "easeeStream": true,
+        "easeeCharger1": "",
+        "easeeCharger2": "",
+        "fordEnabled": false,
+        "fordClientId": "",
+        "fordClientSecret": "",
+        "fordRedirectUri": "http://localhost/fordconnect",
+        "fordInterval": 30,
+        "fordVehicle1Name": "",
+        "fordVehicle2Name": ""
+    },
+    "encryptedNative": ["fuelApiKey", "easeePassword", "fordClientSecret"],
+    "protectedNative": ["fuelApiKey", "easeePassword", "fordClientSecret"],
+    "objects": [],
+    "instanceObjects": [
+        {
+            "_id": "info",
+            "type": "channel",
+            "common": {
+                "name": "Information"
+            },
+            "native": {}
+        },
+        {
+            "_id": "info.connection",
+            "type": "state",
+            "common": {
+                "role": "indicator.connected",
+                "name": "Device or service connected",
+                "type": "boolean",
+                "read": true,
+                "write": false,
+                "def": false
+            },
+            "native": {}
+        }
+    ]
+}

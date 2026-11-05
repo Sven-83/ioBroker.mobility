@@ -1,0 +1,439 @@
+{
+    "i18n": true,
+    "type": "tabs",
+    "items": {
+        "fuelTab": {
+            "type": "panel",
+            "label": "Fuel prices",
+            "items": {
+                "fuelHeader": {
+                    "type": "header",
+                    "text": "Fuel prices (Tankerkoenig)",
+                    "size": 3,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "fuelInfo": {
+                    "type": "staticText",
+                    "text": "fuel_info_text",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "fuelKeyLink": {
+                    "type": "staticLink",
+                    "label": "Request a free API key",
+                    "href": "https://onboarding.tankerkoenig.de",
+                    "button": true,
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 4,
+                    "lg": 3,
+                    "xl": 3
+                },
+                "fuelFinderLink": {
+                    "type": "staticLink",
+                    "label": "Find station IDs",
+                    "href": "https://creativecommons.tankerkoenig.de/TankstellenFinder/index.html",
+                    "button": true,
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 4,
+                    "lg": 3,
+                    "xl": 3
+                },
+                "fuelEnabled": {
+                    "type": "checkbox",
+                    "label": "Fetch fuel prices",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "fuelApiKey": {
+                    "type": "password",
+                    "label": "Tankerkoenig API key",
+                    "help": "Format 00000000-0000-0000-0000-000000000000. Never share the key.",
+                    "repeat": false,
+                    "hidden": "!data.fuelEnabled",
+                    "validator": "!data.fuelEnabled || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test((data.fuelApiKey || '').trim())",
+                    "validatorErrorText": "Please enter a valid API key",
+                    "validatorNoSaveOnError": true,
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "fuelInterval": {
+                    "type": "number",
+                    "label": "Poll interval (minutes)",
+                    "help": "At least 5 minutes (Tankerkoenig terms)",
+                    "min": 5,
+                    "max": 60,
+                    "step": 1,
+                    "hidden": "!data.fuelEnabled",
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 3,
+                    "lg": 2,
+                    "xl": 2,
+                    "newLine": true
+                },
+                "fuelStation1Name": {
+                    "type": "text",
+                    "label": "Station 1: name",
+                    "hidden": "!data.fuelEnabled",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 4,
+                    "lg": 3,
+                    "xl": 3
+                },
+                "fuelStation1Id": {
+                    "type": "text",
+                    "label": "Station 1: Tankerkoenig ID",
+                    "help": "Format 00000000-0000-0000-0000-000000000000",
+                    "hidden": "!data.fuelEnabled",
+                    "validator": "!data.fuelEnabled || !(data.fuelStation1Id || '').trim() || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.fuelStation1Id.trim())",
+                    "validatorErrorText": "Please enter a valid station ID",
+                    "validatorNoSaveOnError": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 8,
+                    "lg": 6,
+                    "xl": 6
+                },
+                "fuelStation2Name": {
+                    "type": "text",
+                    "label": "Station 2: name",
+                    "hidden": "!data.fuelEnabled",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 4,
+                    "lg": 3,
+                    "xl": 3
+                },
+                "fuelStation2Id": {
+                    "type": "text",
+                    "label": "Station 2: Tankerkoenig ID",
+                    "help": "Format 00000000-0000-0000-0000-000000000000",
+                    "hidden": "!data.fuelEnabled",
+                    "validator": "!data.fuelEnabled || !(data.fuelStation2Id || '').trim() || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.fuelStation2Id.trim())",
+                    "validatorErrorText": "Please enter a valid station ID",
+                    "validatorNoSaveOnError": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 8,
+                    "lg": 6,
+                    "xl": 6
+                },
+                "fuelLicense": {
+                    "type": "staticText",
+                    "text": "fuel_license_text",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                }
+            }
+        },
+        "easeeTab": {
+            "type": "panel",
+            "label": "Easee chargers",
+            "items": {
+                "easeeHeader": {
+                    "type": "header",
+                    "text": "Easee chargers",
+                    "size": 3,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "easeeInfo": {
+                    "type": "staticText",
+                    "text": "easee_info_text",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "easeeEnabled": {
+                    "type": "checkbox",
+                    "label": "Use Easee chargers",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "easeeUser": {
+                    "type": "text",
+                    "label": "Easee user name (e-mail or phone)",
+                    "hidden": "!data.easeeEnabled",
+                    "validator": "!data.easeeEnabled || !!(data.easeeUser || '').trim()",
+                    "validatorErrorText": "Please enter the user name",
+                    "validatorNoSaveOnError": true,
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4,
+                    "help": "E-mail, or phone number with country code (e.g. +49...)"
+                },
+                "easeePassword": {
+                    "type": "password",
+                    "label": "Easee password",
+                    "repeat": false,
+                    "hidden": "!data.easeeEnabled",
+                    "validator": "!data.easeeEnabled || !!data.easeePassword",
+                    "validatorErrorText": "Please enter the password",
+                    "validatorNoSaveOnError": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "easeeChargerInfo": {
+                    "type": "staticText",
+                    "text": "easee_charger_text",
+                    "hidden": "!data.easeeEnabled",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "easeeCharger1": {
+                    "type": "text",
+                    "label": "Charger 1: name in the Easee app",
+                    "hidden": "!data.easeeEnabled",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "easeeCharger2": {
+                    "type": "text",
+                    "label": "Charger 2: name in the Easee app",
+                    "hidden": "!data.easeeEnabled",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "easeeInterval": {
+                    "type": "number",
+                    "label": "Poll interval (seconds)",
+                    "help": "30-600 s; Easee allows 100 requests per 5 minutes",
+                    "min": 30,
+                    "max": 600,
+                    "step": 10,
+                    "hidden": "!data.easeeEnabled",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 3,
+                    "lg": 2,
+                    "xl": 2
+                },
+                "easeePrice": {
+                    "type": "number",
+                    "label": "Electricity price (EUR/kWh)",
+                    "help": "For the charging costs; 0 = no costs",
+                    "min": 0,
+                    "max": 5,
+                    "step": 0.0001,
+                    "hidden": "!data.easeeEnabled",
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 3,
+                    "lg": 2,
+                    "xl": 2
+                },
+                "easeeStream": {
+                    "type": "checkbox",
+                    "label": "Real-time values (SignalR stream)",
+                    "help": "Easee pushes changes at once; polling then only runs every 5 minutes as a check",
+                    "hidden": "!data.easeeEnabled",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "easeeCommandInfo": {
+                    "type": "staticText",
+                    "text": "easee_command_text",
+                    "hidden": "!data.easeeEnabled",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                }
+            }
+        },
+        "fordTab": {
+            "type": "panel",
+            "label": "Ford vehicles",
+            "items": {
+                "fordHeader": {
+                    "type": "header",
+                    "text": "Ford vehicles (FordConnect Query)",
+                    "size": 3,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "fordInfo": {
+                    "type": "staticText",
+                    "text": "ford_info_text",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "fordPortalLink": {
+                    "type": "staticLink",
+                    "label": "Ford developer portal (EU)",
+                    "href": "https://developer.ford.com/developer-eu",
+                    "button": true,
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 4,
+                    "lg": 3,
+                    "xl": 3
+                },
+                "fordEnabled": {
+                    "type": "checkbox",
+                    "label": "Use Ford vehicles",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "fordClientId": {
+                    "type": "text",
+                    "label": "Client ID",
+                    "hidden": "!data.fordEnabled",
+                    "validator": "!data.fordEnabled || !!(data.fordClientId || '').trim()",
+                    "validatorErrorText": "Please enter the client ID",
+                    "validatorNoSaveOnError": true,
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "fordClientSecret": {
+                    "type": "password",
+                    "label": "Client secret",
+                    "repeat": false,
+                    "hidden": "!data.fordEnabled",
+                    "validator": "!data.fordEnabled || !!data.fordClientSecret",
+                    "validatorErrorText": "Please enter the client secret",
+                    "validatorNoSaveOnError": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "fordRedirectUri": {
+                    "type": "text",
+                    "label": "Redirect URI",
+                    "help": "Must be exactly the same as in the Ford developer portal",
+                    "hidden": "!data.fordEnabled",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "fordInterval": {
+                    "type": "number",
+                    "label": "Poll interval (minutes)",
+                    "help": "5-60 minutes; frequent polling can get the account locked",
+                    "min": 5,
+                    "max": 60,
+                    "step": 1,
+                    "hidden": "!data.fordEnabled",
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 3,
+                    "lg": 2,
+                    "xl": 2
+                },
+                "fordVehicle1Name": {
+                    "type": "text",
+                    "label": "Vehicle 1: name",
+                    "hidden": "!data.fordEnabled",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "fordVehicle2Name": {
+                    "type": "text",
+                    "label": "Vehicle 2: name",
+                    "hidden": "!data.fordEnabled",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "fordLoginInfo": {
+                    "type": "staticText",
+                    "text": "ford_login_text",
+                    "hidden": "!data.fordEnabled",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                }
+            }
+        }
+    }
+}
