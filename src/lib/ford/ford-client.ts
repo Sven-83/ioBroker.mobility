@@ -119,6 +119,19 @@ export function parseRedirect(text: string): { code: string; state: string | nul
     return { code: trimmed, state: null, error: null };
 }
 
+/** Ford login error seen with accounts that only have shared vehicle access (cause unclear). */
+export const B2C_SHARED_ACCESS_ERROR = 'AADB2C90085';
+
+/**
+ * Azure AD B2C error code (e.g. AADB2C90085) from an error text, without the rest of the text.
+ *
+ * @param text - Error text or description
+ */
+export function b2cErrorCode(text: string | null | undefined): string | null {
+    const match = /AADB2C\d{5}/.exec(text ?? '');
+    return match ? match[0] : null;
+}
+
 /**
  * auth_time from the payload of an id_token (no signature check needed, only for the reminder).
  *
@@ -313,12 +326,14 @@ export class FordClient {
             }
         }
         const error = oauthError(text);
+        const b2c = b2cErrorCode(text);
         if (error === 'invalid_client' || error === 'unauthorized_client') {
             throw new FordClientRejectedError(`${label}: client ID/secret rejected (${error})`, response.status);
         }
         if (response.status === 400 || response.status === 401) {
             // invalid_grant: code used/expired or refresh token expired -> new browser login
-            throw new FordLoginRequiredError(`${label}: rejected (${error || `HTTP ${response.status}`})`);
+            const reason = [error || `HTTP ${response.status}`, b2c].filter(Boolean).join(', ');
+            throw new FordLoginRequiredError(`${label}: rejected (${reason})`);
         }
         throw new FordResponseError(`${label}: HTTP ${response.status}`, response.status);
     }

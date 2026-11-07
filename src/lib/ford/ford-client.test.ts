@@ -4,6 +4,7 @@ import {
     FordClient,
     TOKEN_MARGIN_MS,
     authTimeFromIdToken,
+    b2cErrorCode,
     buildAuthorizeUrl,
     parseRedirect,
     type FetchFn,
@@ -13,6 +14,7 @@ import {
 import { parseTelemetry, sanitize } from './telemetry';
 import { readFordConfig, DEFAULT_REDIRECT_URI, MIN_INTERVAL_MIN } from './config';
 import { parseVehicleCommandId } from './objects';
+import { sharedAccessHint } from './ford-service';
 
 // placeholders only - real client IDs, secrets, tokens and VINs never go into the repo
 const CLIENT = 'client-placeholder';
@@ -189,6 +191,31 @@ describe('ford/client', () => {
         const error = await rejection(client.getTelemetry());
         expect(error).to.be.instanceOf(FordLoginRequiredError);
         expect(error.message).to.contain('invalid_grant');
+        expect(error.message).not.to.contain('secret stuff');
+    });
+
+    it('names the Azure AD B2C error code, but no other error text', async () => {
+        expect(b2cErrorCode('AADB2C90085: The service has encountered an internal error.')).to.equal('AADB2C90085');
+        expect(b2cErrorCode('invalid_grant')).to.equal(null);
+        expect(b2cErrorCode(null)).to.equal(null);
+        expect(
+            parseRedirect('http://localhost/fordconnect?error=server_error&error_description=AADB2C90085%3a+x').error,
+        ).to.contain('AADB2C90085');
+        expect(sharedAccessHint('AADB2C90085')).to.contain('main FordPass account');
+        expect(sharedAccessHint('AADB2C90000')).to.equal('');
+        expect(sharedAccessHint(null)).to.equal('');
+
+        const store = new MemoryStore();
+        store.token = { access: 'a1', refresh: 'r1', expiresAt: 0, authTime: null };
+        const client = new FordClient(CLIENT, SECRET, REDIRECT, store, {
+            fetch: server(() => ({
+                status: 400,
+                body: { error: 'invalid_grant', error_description: 'AADB2C90085: secret stuff' },
+            })),
+        });
+        const error = await rejection(client.getTelemetry());
+        expect(error).to.be.instanceOf(FordLoginRequiredError);
+        expect(error.message).to.contain('invalid_grant, AADB2C90085');
         expect(error.message).not.to.contain('secret stuff');
     });
 

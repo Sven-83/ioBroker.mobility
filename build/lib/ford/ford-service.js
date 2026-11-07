@@ -21,7 +21,8 @@ __export(ford_service_exports, {
   EXPIRY_WARNING_MS: () => EXPIRY_WARNING_MS,
   FordService: () => FordService,
   GARAGE_MAX_AGE_MS: () => GARAGE_MAX_AGE_MS,
-  MAX_BACKOFF_MS: () => MAX_BACKOFF_MS
+  MAX_BACKOFF_MS: () => MAX_BACKOFF_MS,
+  sharedAccessHint: () => sharedAccessHint
 });
 module.exports = __toCommonJS(ford_service_exports);
 var import_errors = require("../fuel/errors");
@@ -109,7 +110,10 @@ class FordService {
     const { log } = this.deps;
     const parsed = (0, import_ford_client.parseRedirect)(text);
     if (parsed.error) {
-      log.warn(`Ford ${v.config.name}: the login page reported an error - please try again`);
+      const code = (0, import_ford_client.b2cErrorCode)(parsed.error);
+      log.warn(
+        `Ford ${v.config.name}: the login page reported an error${code ? ` (${code})` : ""} - please try again${sharedAccessHint(code)}`
+      );
       await this.deps.setState(`${ch}.login.status`, "Login failed on the Ford page - try again");
       return;
     }
@@ -128,7 +132,8 @@ class FordService {
       if (error instanceof import_errors2.FordClientRejectedError) {
         log.error(`Ford: ${(0, import_errors.describeError)(error)} - check client ID/secret in the instance settings`);
       } else {
-        log.warn(`Ford ${v.config.name}: login failed: ${(0, import_errors.describeError)(error)}`);
+        const message = (0, import_errors.describeError)(error);
+        log.warn(`Ford ${v.config.name}: login failed: ${message}${sharedAccessHint((0, import_ford_client.b2cErrorCode)(message))}`);
       }
       await this.deps.setState(`${ch}.login.status`, "Login failed - see log, open login.url again");
       await this.requireLogin(v, "login failed");
@@ -318,11 +323,15 @@ class FordService {
     this.timers.add(handle);
   }
 }
+function sharedAccessHint(code) {
+  return code === import_ford_client.B2C_SHARED_ACCESS_ERROR ? " - this error was reported for FordPass accounts with shared vehicle access; try the login with the main FordPass account (owner) of this vehicle" : "";
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   EXPIRY_WARNING_MS,
   FordService,
   GARAGE_MAX_AGE_MS,
-  MAX_BACKOFF_MS
+  MAX_BACKOFF_MS,
+  sharedAccessHint
 });
 //# sourceMappingURL=ford-service.js.map

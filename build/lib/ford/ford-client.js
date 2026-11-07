@@ -19,6 +19,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var ford_client_exports = {};
 __export(ford_client_exports, {
   AUTHORIZE_PATH: () => AUTHORIZE_PATH,
+  B2C_SHARED_ACCESS_ERROR: () => B2C_SHARED_ACCESS_ERROR,
   BASE_URL: () => BASE_URL,
   DEFAULT_RATE_LIMIT_WAIT_MS: () => DEFAULT_RATE_LIMIT_WAIT_MS,
   FordClient: () => FordClient,
@@ -28,6 +29,7 @@ __export(ford_client_exports, {
   TOKEN_MARGIN_MS: () => TOKEN_MARGIN_MS,
   TOKEN_PATH: () => TOKEN_PATH,
   authTimeFromIdToken: () => authTimeFromIdToken,
+  b2cErrorCode: () => b2cErrorCode,
   buildAuthorizeUrl: () => buildAuthorizeUrl,
   parseRedirect: () => parseRedirect
 });
@@ -64,6 +66,11 @@ function parseRedirect(text) {
     };
   }
   return { code: trimmed, state: null, error: null };
+}
+const B2C_SHARED_ACCESS_ERROR = "AADB2C90085";
+function b2cErrorCode(text) {
+  const match = /AADB2C\d{5}/.exec(text != null ? text : "");
+  return match ? match[0] : null;
 }
 function authTimeFromIdToken(idToken) {
   if (typeof idToken !== "string") {
@@ -240,11 +247,13 @@ class FordClient {
       }
     }
     const error = oauthError(text);
+    const b2c = b2cErrorCode(text);
     if (error === "invalid_client" || error === "unauthorized_client") {
       throw new import_errors.FordClientRejectedError(`${label}: client ID/secret rejected (${error})`, response.status);
     }
     if (response.status === 400 || response.status === 401) {
-      throw new import_errors.FordLoginRequiredError(`${label}: rejected (${error || `HTTP ${response.status}`})`);
+      const reason = [error || `HTTP ${response.status}`, b2c].filter(Boolean).join(", ");
+      throw new import_errors.FordLoginRequiredError(`${label}: rejected (${reason})`);
     }
     throw new import_errors.FordResponseError(`${label}: HTTP ${response.status}`, response.status);
   }
@@ -332,6 +341,7 @@ function oauthError(text) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   AUTHORIZE_PATH,
+  B2C_SHARED_ACCESS_ERROR,
   BASE_URL,
   DEFAULT_RATE_LIMIT_WAIT_MS,
   FordClient,
@@ -341,6 +351,7 @@ function oauthError(text) {
   TOKEN_MARGIN_MS,
   TOKEN_PATH,
   authTimeFromIdToken,
+  b2cErrorCode,
   buildAuthorizeUrl,
   parseRedirect
 });

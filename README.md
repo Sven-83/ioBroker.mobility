@@ -70,6 +70,9 @@ Fuel price data: [Tankerkönig](https://creativecommons.tankerkoenig.de), licens
   log in and pick the vehicle. The browser then shows an error page - copy its whole address into
   `ford.vehicleN.login.response`. The adapter takes the code, empties the field at once and stores the tokens
   encrypted. A week before the login expires the log reminds you.
+- One Ford login gives access to exactly one vehicle, so two vehicles need two logins (vehicle 1 and 2).
+- Login error `AADB2C90085`: reported for FordPass accounts that only have shared vehicle access. The log
+  then suggests trying the login with the owner's main FordPass account.
 - Values: fuel level and range, battery and electric range, plug and charging status, odometer, 12 V battery,
   oil life, temperatures, ignition, alarm, doors, tyre pressure per wheel; `metricKeys` and `raw` (without VIN
   and position) show what the vehicle delivers.
@@ -191,6 +194,7 @@ Please refer to the [`dev-server` documentation](https://github.com/ioBroker/dev
 - (Sven-83) Easee chargers via the observations API: status, power, energy, costs, start/stop
 - (Sven-83) Easee real-time values via the SignalR stream, polling as fallback
 - (Sven-83) Ford vehicles via FordConnect Query: browser login per vehicle, telemetry (not yet tested live)
+- (Sven-83) Ford: hint for login error AADB2C90085 (shared vehicle access); admin >= 7.6.20
 
 ### 0.0.1
 

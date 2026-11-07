@@ -19,7 +19,14 @@ import type { Logger, TimerHandle } from '../fuel/fuel-service';
 import type { ObjectDefinition } from '../fuel/objects';
 import { FailureLog, formatDuration } from '../util/failure-log';
 import type { FordConfig, FordVehicleConfig } from './config';
-import { LOGIN_LIFETIME_MS, buildAuthorizeUrl, parseRedirect, type GarageInfo } from './ford-client';
+import {
+    B2C_SHARED_ACCESS_ERROR,
+    LOGIN_LIFETIME_MS,
+    b2cErrorCode,
+    buildAuthorizeUrl,
+    parseRedirect,
+    type GarageInfo,
+} from './ford-client';
 import { FordAbortedError, FordClientRejectedError, FordLoginRequiredError, FordRateLimitedError } from './errors';
 import { rootObjects, vehicleChannel, vehicleObjects } from './objects';
 import { parseTelemetry, sanitize } from './telemetry';
@@ -172,7 +179,10 @@ export class FordService {
         const { log } = this.deps;
         const parsed = parseRedirect(text);
         if (parsed.error) {
-            log.warn(`Ford ${v.config.name}: the login page reported an error - please try again`);
+            const code = b2cErrorCode(parsed.error);
+            log.warn(
+                `Ford ${v.config.name}: the login page reported an error${code ? ` (${code})` : ''} - please try again${sharedAccessHint(code)}`,
+            );
             await this.deps.setState(`${ch}.login.status`, 'Login failed on the Ford page - try again');
             return;
         }
@@ -191,7 +201,8 @@ export class FordService {
             if (error instanceof FordClientRejectedError) {
                 log.error(`Ford: ${describeError(error)} - check client ID/secret in the instance settings`);
             } else {
-                log.warn(`Ford ${v.config.name}: login failed: ${describeError(error)}`);
+                const message = describeError(error);
+                log.warn(`Ford ${v.config.name}: login failed: ${message}${sharedAccessHint(b2cErrorCode(message))}`);
             }
             await this.deps.setState(`${ch}.login.status`, 'Login failed - see log, open login.url again');
             await this.requireLogin(v, 'login failed');
@@ -390,4 +401,15 @@ export class FordService {
         v.timer = { handle };
         this.timers.add(handle);
     }
+}
+
+/**
+ * Extra hint for the login error that was reported with a second FordPass account that only has shared access.
+ *
+ * @param code - Azure AD B2C error code or null
+ */
+export function sharedAccessHint(code: string | null): string {
+    return code === B2C_SHARED_ACCESS_ERROR
+        ? ' - this error was reported for FordPass accounts with shared vehicle access; try the login with the main FordPass account (owner) of this vehicle'
+        : '';
 }
