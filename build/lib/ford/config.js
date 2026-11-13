@@ -55,10 +55,13 @@ function readFordConfig(native) {
   intervalMin = Math.min(Math.max(Math.round(intervalMin), MIN_INTERVAL_MIN), MAX_INTERVAL_MIN);
   const vehicles = [];
   const names = [native.fordVehicle1Name, native.fordVehicle2Name];
+  const tanks = [native.fordVehicle1Tank, native.fordVehicle2Tank];
   for (let i = 0; i < VEHICLE_SLOTS; i++) {
     const name = clean(names[i]).slice(0, 40);
     if (name) {
-      vehicles.push({ slot: i + 1, name });
+      const tank = Number(tanks[i]);
+      const tankLitres = Number.isFinite(tank) && tank > 0 && tank <= 200 ? Math.round(tank) : 0;
+      vehicles.push({ slot: i + 1, name, tankLitres });
     }
   }
   const wanted = native.fordEnabled === true;

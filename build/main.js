@@ -180,7 +180,16 @@ class Mobility extends utils.Adapter {
       setState: async (id, value) => {
         await this.setState(id, value, true);
       },
-      onConnection: (connected) => this.setConnection("ford", connected)
+      onConnection: (connected) => this.setConnection("ford", connected),
+      loadHistory: async (slot) => {
+        try {
+          const { file } = await this.readFileAsync(this.namespace, `ford-history-${slot}.json`);
+          return file.toString();
+        } catch {
+          return void 0;
+        }
+      },
+      saveHistory: (slot, text) => this.writeFileAsync(this.namespace, `ford-history-${slot}.json`, text)
     });
     await this.subscribeStatesAsync("ford.vehicle*.login.response");
     await this.subscribeStatesAsync("ford.vehicle*.refresh");

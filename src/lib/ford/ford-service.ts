@@ -31,6 +31,7 @@ import { FordAbortedError, FordClientRejectedError, FordLoginRequiredError, Ford
 import { rootObjects, vehicleChannel, vehicleObjects } from './objects';
 import { battery12vLow, isBev, parseTelemetry, sanitize } from './telemetry';
 import { computeWarnings, worstLevel } from './warnings';
+import { VehicleHistory } from './history';
 
 export const MAX_BACKOFF_MS = 60 * 60_000;
 /** Warn this long before the browser login expires */
@@ -78,6 +79,10 @@ export interface FordDeps {
     setState(id: string, value: ioBroker.StateValue): Promise<void>;
     /** Connection status of the Ford part */
     onConnection(connected: boolean): void;
+    /** Reads the stored history of one vehicle (undefined = none yet) */
+    loadHistory(slot: number): Promise<string | undefined>;
+    /** Stores the history of one vehicle */
+    saveHistory(slot: number, text: string): Promise<void>;
 }
 
 interface Vehicle {
@@ -96,6 +101,8 @@ interface Vehicle {
     weak12v: boolean | undefined;
     /** Since when the vehicle is unlocked (epoch ms), null if locked or unknown */
     unlockedSince: number | null;
+    /** Trips, consumption, tyre trend */
+    history: VehicleHistory;
 }
 
 /**
@@ -126,6 +133,7 @@ export class FordService {
             expiryWarned: false,
             weak12v: undefined,
             unlockedSince: null,
+            history: new VehicleHistory(),
         }));
     }
 
@@ -136,6 +144,13 @@ export class FordService {
             definitions.push(...vehicleObjects(v.config.slot, v.config.name));
         }
         await this.deps.ensureObjects(definitions);
+        for (const v of this.vehicles) {
+            const loaded = VehicleHistory.parse(await this.deps.loadHistory(v.config.slot).catch(() => undefined));
+            if (!loaded.ok) {
+                this.deps.log.warn(`Ford ${v.config.name}: stored history could not be read, starting a new one`);
+            }
+            v.history = loaded.history;
+        }
         for (const [index, v] of this.vehicles.entries()) {
             const ch = vehicleChannel(v.config.slot);
             await this.deps.setState(`${ch}.name`, v.config.name);
@@ -355,6 +370,18 @@ export class FordService {
         for (const [wheel, pressure] of Object.entries(st.tires)) {
             await set(`tires.${wheel}`, pressure);
         }
+        // history (trips, consumption, tyre trend)
+        const now = this.deps.now();
+        v.history.add({
+            t: st.updateTime ?? now,
+            odo: st.odometer,
+            temp: st.outsideTemp,
+            fuel: isBev(st) ? null : st.fuelLevel,
+            energy: st.energyRemaining,
+            tyres: st.tires,
+        });
+        await this.writeHistory(v, now);
+
         // warnings for the dashboard
         if (st.locked === false) {
             v.unlockedSince ??= st.lockTime ?? this.deps.now();
@@ -362,9 +389,9 @@ export class FordService {
             v.unlockedSince = null;
         }
         const authTime = v.client.authTime();
-        const now = this.deps.now();
         const warnings = computeWarnings(st, {
             now,
+            tyreLoss: v.history.tyreLoss(now),
             unlockedSince: v.unlockedSince,
             loginExpires: authTime === null ? null : authTime + LOGIN_LIFETIME_MS,
             hour: new Date(now).getHours(),
@@ -374,6 +401,34 @@ export class FordService {
         await set('warningCount', warnings.length);
         await set('metricKeys', JSON.stringify(st.metricKeys));
         await set('raw', JSON.stringify(sanitize(body)));
+    }
+
+    /**
+     * Writes the history states and stores the history file.
+     *
+     * @param v - Vehicle
+     * @param now - Current time
+     */
+    private async writeHistory(v: Vehicle, now: number): Promise<void> {
+        const ch = vehicleChannel(v.config.slot);
+        const tank = v.config.tankLitres;
+        const weeks = v.history.weeks(now, 8, tank);
+        const recent = weeks.slice(-4);
+        const kwh = recent.reduce((a, w) => a + w.kwhUsed, 0);
+        const km = recent.reduce((a, w) => a + w.kmEv, 0);
+        await this.deps.setState(`${ch}.history.weeks`, JSON.stringify(weeks));
+        await this.deps.setState(`${ch}.history.months`, JSON.stringify(v.history.months(now, 12, tank)));
+        await this.deps.setState(`${ch}.history.tyreLoss`, JSON.stringify(v.history.tyreLoss(now)));
+        await this.deps.setState(
+            `${ch}.history.energyConsumption`,
+            km >= 20 ? Math.round((kwh / km) * 1000) / 10 : null,
+        );
+        await this.deps.setState(`${ch}.history.fuelConsumption`, v.history.fuelConsumption(tank));
+        const refuel = v.history.lastRefuel();
+        await this.deps.setState(`${ch}.history.lastRefuel`, refuel ? JSON.stringify(refuel) : null);
+        await this.deps.saveHistory(v.config.slot, v.history.serialize()).catch(error => {
+            this.deps.log.warn(`Ford ${v.config.name}: history could not be stored: ${describeError(error)}`);
+        });
     }
 
     /**

@@ -50,5 +50,8 @@
     "5-60 minutes; frequent polling can get the account locked": "5-60 minutes; frequent polling can get the account locked",
     "Vehicle 1: name": "Vehicle 1: name",
     "Vehicle 2: name": "Vehicle 2: name",
-    "ford_login_text": "Login (once per vehicle, about once a year): after saving, open ford.vehicleN.login.url in the browser, log in with the FordPass account and pick the vehicle. The browser then shows an error page - copy its whole address into ford.vehicleN.login.response."
+    "ford_login_text": "Login (once per vehicle, about once a year): after saving, open ford.vehicleN.login.url in the browser, log in with the FordPass account and pick the vehicle. The browser then shows an error page - copy its whole address into ford.vehicleN.login.response.",
+    "Vehicle 1: tank size (litres)": "Vehicle 1: tank size (litres)",
+    "Vehicle 2: tank size (litres)": "Vehicle 2: tank size (litres)",
+    "0 = electric / unknown; used for litres and consumption": "0 = electric / unknown; used for litres and consumption"
 }

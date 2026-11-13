@@ -367,7 +367,7 @@ describe('ford/config', () => {
             fordVehicle2Name: 'Car B',
         });
         expect(ok.config.enabled).to.equal(true);
-        expect(ok.config.vehicles).to.deep.equal([{ slot: 2, name: 'Car B' }]);
+        expect(ok.config.vehicles).to.deep.equal([{ slot: 2, name: 'Car B', tankLitres: 0 }]);
         expect(ok.config.redirectUri).to.equal(DEFAULT_REDIRECT_URI);
         const missing = readFordConfig({ fordEnabled: true, fordClientId: CLIENT, fordClientSecret: SECRET });
         expect(missing.config.enabled).to.equal(false);

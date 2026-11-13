@@ -78,6 +78,12 @@ Fuel price data: [Tankerkönig](https://creativecommons.tankerkoenig.de), licens
   (below 40 %, logged once), oil life, temperatures, ignition, alarm, doors, lock, windows, tyre pressure per
   wheel; `metricKeys` and `raw` (without VIN, Ford vehicle ID and position) show what the vehicle delivers.
 - Values that do not apply are emptied: fuel range of a battery electric vehicle, time until full while unplugged.
+- Dashboard warnings per vehicle in `warnings` (JSON, worst first), `warningLevel` (critical/warning/info/none) and
+  `warningCount`: alarm, tyre, unlocked, door/hood/window open, charge fault, fuel, battery, 12 V, oil, not plugged in,
+  battery power limited, slow tyre pressure loss, frost, stale data, login expiring.
+- History per vehicle in `history.*` (stored as file `ford-history-N.json`): km per week and month with the share of
+  trips over 50 km, kWh/100 km and charged kWh (electric), litres filled and l/100 km (enter the tank size), average
+  outside temperature, temperature-corrected tyre pressure loss over 7 days.
 - Polls every 5-60 minutes (default 30) with a random offset; frequent polling can get the account locked.
 - No VIN, number plate or position in object IDs, states or logs.
 
@@ -199,6 +205,8 @@ Please refer to the [`dev-server` documentation](https://github.com/ioBroker/dev
 - (Sven-83) Ford: hint for login error AADB2C90085 (shared vehicle access); admin >= 7.6.20
 - (Sven-83) Ford: lock, windows, battery energy/capacity/temperature, range at 100 %, charging power, weak 12 V
   battery flag; empty fuel range for BEV and time until full while unplugged; vehicle ID removed from `raw`
+- (Sven-83) Ford: dashboard warnings per vehicle (`warnings`, `warningLevel`, `warningCount`)
+- (Sven-83) Ford: history per vehicle (km, long trips, consumption, refuels, tyre trend), tank size setting
 
 ### 0.0.1
 

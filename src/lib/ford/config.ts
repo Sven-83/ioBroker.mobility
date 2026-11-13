@@ -19,6 +19,8 @@ export interface FordVehicleConfig {
     slot: number;
     /** Display name, e.g. "Family car" */
     name: string;
+    /** Tank size in litres, 0 = unknown / electric */
+    tankLitres: number;
 }
 
 /** Validated Ford config */
@@ -53,6 +55,10 @@ export interface FordNative {
     fordVehicle1Name?: unknown;
     /** Name of vehicle 2 */
     fordVehicle2Name?: unknown;
+    /** Tank size of vehicle 1 (litres) */
+    fordVehicle1Tank?: unknown;
+    /** Tank size of vehicle 2 (litres) */
+    fordVehicle2Tank?: unknown;
 }
 
 /**
@@ -90,10 +96,13 @@ export function readFordConfig(native: FordNative): { config: FordConfig; proble
 
     const vehicles: FordVehicleConfig[] = [];
     const names = [native.fordVehicle1Name, native.fordVehicle2Name];
+    const tanks = [native.fordVehicle1Tank, native.fordVehicle2Tank];
     for (let i = 0; i < VEHICLE_SLOTS; i++) {
         const name = clean(names[i]).slice(0, 40);
         if (name) {
-            vehicles.push({ slot: i + 1, name });
+            const tank = Number(tanks[i]);
+            const tankLitres = Number.isFinite(tank) && tank > 0 && tank <= 200 ? Math.round(tank) : 0;
+            vehicles.push({ slot: i + 1, name, tankLitres });
         }
     }
 

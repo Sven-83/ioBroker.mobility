@@ -97,7 +97,9 @@
         "fordRedirectUri": "http://localhost/fordconnect",
         "fordInterval": 30,
         "fordVehicle1Name": "",
-        "fordVehicle2Name": ""
+        "fordVehicle2Name": "",
+        "fordVehicle1Tank": 0,
+        "fordVehicle2Tank": 0
     },
     "encryptedNative": ["fuelApiKey", "easeePassword", "fordClientSecret"],
     "protectedNative": ["fuelApiKey", "easeePassword", "fordClientSecret"],

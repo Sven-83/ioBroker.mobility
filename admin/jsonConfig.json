@@ -412,6 +412,20 @@
                     "lg": 4,
                     "xl": 4
                 },
+                "fordVehicle1Tank": {
+                    "type": "number",
+                    "label": "Vehicle 1: tank size (litres)",
+                    "help": "0 = electric / unknown; used for litres and consumption",
+                    "min": 0,
+                    "max": 200,
+                    "step": 1,
+                    "hidden": "!data.fordEnabled",
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 3,
+                    "lg": 2,
+                    "xl": 2
+                },
                 "fordVehicle2Name": {
                     "type": "text",
                     "label": "Vehicle 2: name",
@@ -421,6 +435,20 @@
                     "md": 6,
                     "lg": 4,
                     "xl": 4
+                },
+                "fordVehicle2Tank": {
+                    "type": "number",
+                    "label": "Vehicle 2: tank size (litres)",
+                    "help": "0 = electric / unknown; used for litres and consumption",
+                    "min": 0,
+                    "max": 200,
+                    "step": 1,
+                    "hidden": "!data.fordEnabled",
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 3,
+                    "lg": 2,
+                    "xl": 2
                 },
                 "fordLoginInfo": {
                     "type": "staticText",

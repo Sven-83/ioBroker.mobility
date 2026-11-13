@@ -11,8 +11,8 @@ const CONFIG: FordConfig = {
     redirectUri: 'http://localhost/fordconnect',
     intervalMin: 10,
     vehicles: [
-        { slot: 1, name: 'Car A' },
-        { slot: 2, name: 'Car B' },
+        { slot: 1, name: 'Car A', tankLitres: 42 },
+        { slot: 2, name: 'Car B', tankLitres: 0 },
     ],
 };
 const MIN = 60_000;
@@ -117,6 +117,7 @@ function setup() {
     const states = new Map<string, ioBroker.StateValue>();
     const logs: { level: string; message: string }[] = [];
     const connection: boolean[] = [];
+    const files = new Map<number, string>();
     const log = (level: string) => (message: string) => logs.push({ level, message });
     const deps: FordDeps = {
         createClient: slot => apis.get(slot)!,
@@ -132,8 +133,13 @@ function setup() {
             return Promise.resolve();
         },
         onConnection: connected => connection.push(connected),
+        loadHistory: slot => Promise.resolve(files.get(slot)),
+        saveHistory: (slot, text) => {
+            files.set(slot, text);
+            return Promise.resolve();
+        },
     };
-    return { clock, apis, states, logs, connection, service: new FordService(CONFIG, deps) };
+    return { clock, apis, states, logs, connection, files, service: new FordService(CONFIG, deps) };
 }
 
 describe('ford/service', () => {
@@ -205,6 +211,24 @@ describe('ford/service', () => {
         await t.clock.next();
         expect(t.clock.pending()).to.deep.equal([20 * MIN]);
         expect(t.logs.filter(l => l.level === 'warn' && l.message.includes('ENOTFOUND'))).to.have.length(1);
+    });
+
+    it('writes the history states and keeps the history across a restart', async () => {
+        const t = setup();
+        t.apis.get(1)!.loggedIn = true;
+        await t.service.start();
+        await t.clock.next();
+        expect(JSON.parse(String(t.states.get('ford.vehicle1.history.weeks')))).to.have.length.within(8, 9);
+        expect(t.states.get('ford.vehicle1.history.tyreLoss')).to.equal('{}');
+        expect(t.states.get('ford.vehicle1.history.fuelConsumption')).to.equal(null);
+        expect(t.files.has(1)).to.equal(true);
+        expect(JSON.parse(String(t.states.get('ford.vehicle1.warnings')))).to.be.an('array');
+
+        const again = setup();
+        again.files.set(1, '{broken');
+        again.apis.get(1)!.loggedIn = true;
+        await again.service.start();
+        expect(again.logs.some(l => l.message.includes('history could not be read'))).to.equal(true);
     });
 
     it('warns a week before the login expires', async () => {

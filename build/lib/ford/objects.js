@@ -145,6 +145,44 @@ function vehicleObjects(slot, name) {
       role: "indicator"
     }),
     { id: `${ch}.tires`, obj: { type: "folder", common: { name: n("Tyre pressure", "Reifendruck") }, native: {} } },
+    {
+      id: `${ch}.history`,
+      obj: { type: "folder", common: { name: n("History (dashboard)", "Verlauf (Dashboard)") }, native: {} }
+    },
+    state(`${ch}.history.weeks`, n("Last 8 weeks (JSON)", "Letzte 8 Wochen (JSON)"), {
+      type: "string",
+      role: "json"
+    }),
+    state(`${ch}.history.months`, n("Last 12 months (JSON)", "Letzte 12 Monate (JSON)"), {
+      type: "string",
+      role: "json"
+    }),
+    state(
+      `${ch}.history.tyreLoss`,
+      n("Tyre pressure loss in 7 days, kPa (JSON)", "Reifendruckverlust in 7 Tagen, kPa (JSON)"),
+      {
+        type: "string",
+        role: "json"
+      }
+    ),
+    state(`${ch}.history.energyConsumption`, n("Energy consumption (4 weeks)", "Stromverbrauch (4 Wochen)"), {
+      type: "number",
+      role: "value",
+      unit: "kWh/100km"
+    }),
+    state(
+      `${ch}.history.fuelConsumption`,
+      n("Fuel consumption (last refuels)", "Spritverbrauch (letzte Tankf\xFCllungen)"),
+      {
+        type: "number",
+        role: "value",
+        unit: "l/100km"
+      }
+    ),
+    state(`${ch}.history.lastRefuel`, n("Last refuel (JSON)", "Letztes Tanken (JSON)"), {
+      type: "string",
+      role: "json"
+    }),
     state(`${ch}.warnings`, n("Warnings (JSON, worst first)", "Warnungen (JSON, schlimmste zuerst)"), {
       type: "string",
       role: "json"
