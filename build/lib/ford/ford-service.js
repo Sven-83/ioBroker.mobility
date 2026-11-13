@@ -31,6 +31,7 @@ var import_ford_client = require("./ford-client");
 var import_errors2 = require("./errors");
 var import_objects = require("./objects");
 var import_telemetry = require("./telemetry");
+var import_warnings = require("./warnings");
 const MAX_BACKOFF_MS = 60 * 6e4;
 const EXPIRY_WARNING_MS = 7 * 24 * 36e5;
 const GARAGE_MAX_AGE_MS = 24 * 36e5;
@@ -52,7 +53,8 @@ class FordService {
       failureLog: new import_failure_log.FailureLog(),
       timer: void 0,
       expiryWarned: false,
-      weak12v: void 0
+      weak12v: void 0,
+      unlockedSince: null
     }));
   }
   vehicles;
@@ -226,7 +228,7 @@ class FordService {
    * @param body - Telemetry answer
    */
   async apply(v, body) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     const ch = (0, import_objects.vehicleChannel)(v.config.slot);
     const st = (0, import_telemetry.parseTelemetry)(body);
     const set = async (key, value) => {
@@ -275,6 +277,22 @@ class FordService {
     for (const [wheel, pressure] of Object.entries(st.tires)) {
       await set(`tires.${wheel}`, pressure);
     }
+    if (st.locked === false) {
+      (_e = v.unlockedSince) != null ? _e : v.unlockedSince = (_d = st.lockTime) != null ? _d : this.deps.now();
+    } else if (st.locked === true) {
+      v.unlockedSince = null;
+    }
+    const authTime = v.client.authTime();
+    const now = this.deps.now();
+    const warnings = (0, import_warnings.computeWarnings)(st, {
+      now,
+      unlockedSince: v.unlockedSince,
+      loginExpires: authTime === null ? null : authTime + import_ford_client.LOGIN_LIFETIME_MS,
+      hour: new Date(now).getHours()
+    });
+    await set("warnings", JSON.stringify(warnings));
+    await set("warningLevel", (0, import_warnings.worstLevel)(warnings));
+    await set("warningCount", warnings.length);
     await set("metricKeys", JSON.stringify(st.metricKeys));
     await set("raw", JSON.stringify((0, import_telemetry.sanitize)(body)));
   }

@@ -145,6 +145,20 @@ function vehicleObjects(slot, name) {
       role: "indicator"
     }),
     { id: `${ch}.tires`, obj: { type: "folder", common: { name: n("Tyre pressure", "Reifendruck") }, native: {} } },
+    state(`${ch}.warnings`, n("Warnings (JSON, worst first)", "Warnungen (JSON, schlimmste zuerst)"), {
+      type: "string",
+      role: "json"
+    }),
+    state(
+      `${ch}.warningLevel`,
+      n("Worst warning (critical/warning/info/none)", "Schlimmste Warnung (critical/warning/info/none)"),
+      {
+        type: "string",
+        role: "text",
+        states: { critical: "critical", warning: "warning", info: "info", none: "none" }
+      }
+    ),
+    state(`${ch}.warningCount`, n("Number of warnings", "Anzahl Warnungen"), { type: "number", role: "value" }),
     state(`${ch}.metricKeys`, n("Metrics the vehicle delivers", "Vom Fahrzeug gelieferte Werte"), {
       type: "string",
       role: "json"

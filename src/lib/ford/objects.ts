@@ -14,6 +14,7 @@
  *    │  chargePower, odometer, battery12v, battery12vVoltage, battery12vLow, oilLife, outsideTemp,
  *    │  coolantTemp, ignition, alarm, doorsClosed, locked, windowsClosed
  *    ├─ tires.frontLeft/frontRight/rearLeft/rearRight   kPa
+ *    ├─ warnings, warningLevel, warningCount   dashboard warnings (see warnings.ts)
  *    ├─ metricKeys              json     which metrics the vehicle delivers
  *    ├─ raw                     json     telemetry without VIN/vehicle ID/position (for mapping more later)
  *    └─ refresh                 button
@@ -179,6 +180,20 @@ export function vehicleObjects(slot: number, name: string): ObjectDefinition[] {
             role: 'indicator',
         }),
         { id: `${ch}.tires`, obj: { type: 'folder', common: { name: n('Tyre pressure', 'Reifendruck') }, native: {} } },
+        state(`${ch}.warnings`, n('Warnings (JSON, worst first)', 'Warnungen (JSON, schlimmste zuerst)'), {
+            type: 'string',
+            role: 'json',
+        }),
+        state(
+            `${ch}.warningLevel`,
+            n('Worst warning (critical/warning/info/none)', 'Schlimmste Warnung (critical/warning/info/none)'),
+            {
+                type: 'string',
+                role: 'text',
+                states: { critical: 'critical', warning: 'warning', info: 'info', none: 'none' },
+            },
+        ),
+        state(`${ch}.warningCount`, n('Number of warnings', 'Anzahl Warnungen'), { type: 'number', role: 'value' }),
         state(`${ch}.metricKeys`, n('Metrics the vehicle delivers', 'Vom Fahrzeug gelieferte Werte'), {
             type: 'string',
             role: 'json',

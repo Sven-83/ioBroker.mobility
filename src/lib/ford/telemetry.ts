@@ -75,6 +75,18 @@ export interface VehicleState {
     doorsClosed: boolean | null;
     /** Vehicle locked (ALL_DOORS), null if unknown */
     locked: boolean | null;
+    /** When the vehicle reported its lock state (epoch ms), null if unknown */
+    lockTime: number | null;
+    /** Hood closed, null if unknown */
+    hoodClosed: boolean | null;
+    /** Tyre warning status per wheel as reported by the vehicle, e.g. NORMAL / LOW */
+    tireStatus: Record<string, string>;
+    /** Recommended tyre pressure per wheel (door placard) in kPa */
+    tirePlacard: Record<string, number>;
+    /** Alarm or panic alarm going off, null if unknown */
+    alarmTriggered: boolean | null;
+    /** High-voltage battery performance status, e.g. NORMAL */
+    batteryPerformance: string | null;
     /** All windows closed, null if unknown */
     windowsClosed: boolean | null;
     /** Names of all metrics the vehicle delivered */
@@ -140,6 +152,30 @@ export function parseTelemetry(body: Record<string, unknown>): VehicleState {
             tires[wheel] = pressure;
         }
     }
+    const tireStatus: Record<string, string> = {};
+    for (const entry of list('tirePressureStatus')) {
+        const wheel = WHEELS[typeof entry.vehicleWheel === 'string' ? entry.vehicleWheel.toUpperCase() : ''];
+        const status = text(entry.value);
+        if (wheel && status) {
+            tireStatus[wheel] = status.toUpperCase();
+        }
+    }
+    const tirePlacard: Record<string, number> = {};
+    for (const tire of list('tirePressure')) {
+        const wheel = WHEELS[typeof tire.vehicleWheel === 'string' ? tire.vehicleWheel.toUpperCase() : ''];
+        const placard = num(tire.wheelPlacardFront ?? tire.wheelPlacardRear);
+        if (wheel && placard !== null && placard > 0) {
+            tirePlacard[wheel] = placard;
+        }
+    }
+    const hood = text(value('hoodStatus'))?.toUpperCase();
+    const alarmText = text(value('alarmStatus'))?.toUpperCase();
+    const panicText = text(value('panicAlarmStatus'))?.toUpperCase();
+    const alarmTriggered =
+        alarmText === undefined && panicText === undefined
+            ? null
+            : /TRIGGER|ALARMING|SOUNDING/.test(alarmText ?? '') || /^(ACTIVE|ON|TRIGGERED)$/.test(panicText ?? '');
+
     const doors = list('doorStatus').map(door => text(door.value));
     const doorsClosed =
         doors.length === 0 || doors.some(d => d === null) ? null : doors.every(d => d?.toUpperCase() === 'CLOSED');
@@ -147,6 +183,7 @@ export function parseTelemetry(body: Record<string, unknown>): VehicleState {
     const allDoors = list('doorLockStatus').find(e => text(e.vehicleDoor)?.toUpperCase() === 'ALL_DOORS');
     const lock = allDoors ? text(allDoors.value)?.toUpperCase() : undefined;
     const locked = lock === undefined || lock === null ? null : lock.includes('LOCKED') && !lock.includes('UNLOCKED');
+    const lockTime = allDoors ? time(allDoors.updateTime) : null;
 
     // windowStatus[].value.doubleRange = how far open in %, 0..0 = closed
     const windows = list('windowStatus').map(w => {
@@ -187,6 +224,12 @@ export function parseTelemetry(body: Record<string, unknown>): VehicleState {
         tires,
         doorsClosed,
         locked,
+        lockTime,
+        hoodClosed: hood === undefined ? null : hood === 'CLOSED',
+        tireStatus,
+        tirePlacard,
+        alarmTriggered,
+        batteryPerformance: text(value('xevBatteryPerformanceStatus'))?.toUpperCase() ?? null,
         windowsClosed,
         metricKeys: Object.keys(metrics).sort(),
     };

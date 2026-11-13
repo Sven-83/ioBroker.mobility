@@ -30,6 +30,7 @@ import {
 import { FordAbortedError, FordClientRejectedError, FordLoginRequiredError, FordRateLimitedError } from './errors';
 import { rootObjects, vehicleChannel, vehicleObjects } from './objects';
 import { battery12vLow, isBev, parseTelemetry, sanitize } from './telemetry';
+import { computeWarnings, worstLevel } from './warnings';
 
 export const MAX_BACKOFF_MS = 60 * 60_000;
 /** Warn this long before the browser login expires */
@@ -93,6 +94,8 @@ interface Vehicle {
     expiryWarned: boolean;
     /** Last 12 V verdict (for logging changes only), undefined = not known yet */
     weak12v: boolean | undefined;
+    /** Since when the vehicle is unlocked (epoch ms), null if locked or unknown */
+    unlockedSince: number | null;
 }
 
 /**
@@ -122,6 +125,7 @@ export class FordService {
             timer: undefined,
             expiryWarned: false,
             weak12v: undefined,
+            unlockedSince: null,
         }));
     }
 
@@ -351,6 +355,23 @@ export class FordService {
         for (const [wheel, pressure] of Object.entries(st.tires)) {
             await set(`tires.${wheel}`, pressure);
         }
+        // warnings for the dashboard
+        if (st.locked === false) {
+            v.unlockedSince ??= st.lockTime ?? this.deps.now();
+        } else if (st.locked === true) {
+            v.unlockedSince = null;
+        }
+        const authTime = v.client.authTime();
+        const now = this.deps.now();
+        const warnings = computeWarnings(st, {
+            now,
+            unlockedSince: v.unlockedSince,
+            loginExpires: authTime === null ? null : authTime + LOGIN_LIFETIME_MS,
+            hour: new Date(now).getHours(),
+        });
+        await set('warnings', JSON.stringify(warnings));
+        await set('warningLevel', worstLevel(warnings));
+        await set('warningCount', warnings.length);
         await set('metricKeys', JSON.stringify(st.metricKeys));
         await set('raw', JSON.stringify(sanitize(body)));
     }

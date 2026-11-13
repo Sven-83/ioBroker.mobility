@@ -53,7 +53,7 @@ function time(value) {
   return Number.isFinite(ms) ? ms : null;
 }
 function parseTelemetry(body) {
-  var _a;
+  var _a, _b, _c, _d, _e, _f, _g;
   const metrics = typeof body.metrics === "object" && body.metrics !== null && !Array.isArray(body.metrics) ? body.metrics : {};
   const value = (key) => {
     const entry = metrics[key];
@@ -70,14 +70,35 @@ function parseTelemetry(body) {
       tires[wheel] = pressure;
     }
   }
+  const tireStatus = {};
+  for (const entry of list("tirePressureStatus")) {
+    const wheel = WHEELS[typeof entry.vehicleWheel === "string" ? entry.vehicleWheel.toUpperCase() : ""];
+    const status = text(entry.value);
+    if (wheel && status) {
+      tireStatus[wheel] = status.toUpperCase();
+    }
+  }
+  const tirePlacard = {};
+  for (const tire of list("tirePressure")) {
+    const wheel = WHEELS[typeof tire.vehicleWheel === "string" ? tire.vehicleWheel.toUpperCase() : ""];
+    const placard = num((_a = tire.wheelPlacardFront) != null ? _a : tire.wheelPlacardRear);
+    if (wheel && placard !== null && placard > 0) {
+      tirePlacard[wheel] = placard;
+    }
+  }
+  const hood = (_b = text(value("hoodStatus"))) == null ? void 0 : _b.toUpperCase();
+  const alarmText = (_c = text(value("alarmStatus"))) == null ? void 0 : _c.toUpperCase();
+  const panicText = (_d = text(value("panicAlarmStatus"))) == null ? void 0 : _d.toUpperCase();
+  const alarmTriggered = alarmText === void 0 && panicText === void 0 ? null : /TRIGGER|ALARMING|SOUNDING/.test(alarmText != null ? alarmText : "") || /^(ACTIVE|ON|TRIGGERED)$/.test(panicText != null ? panicText : "");
   const doors = list("doorStatus").map((door) => text(door.value));
   const doorsClosed = doors.length === 0 || doors.some((d) => d === null) ? null : doors.every((d) => (d == null ? void 0 : d.toUpperCase()) === "CLOSED");
   const allDoors = list("doorLockStatus").find((e) => {
     var _a2;
     return ((_a2 = text(e.vehicleDoor)) == null ? void 0 : _a2.toUpperCase()) === "ALL_DOORS";
   });
-  const lock = allDoors ? (_a = text(allDoors.value)) == null ? void 0 : _a.toUpperCase() : void 0;
+  const lock = allDoors ? (_e = text(allDoors.value)) == null ? void 0 : _e.toUpperCase() : void 0;
   const locked = lock === void 0 || lock === null ? null : lock.includes("LOCKED") && !lock.includes("UNLOCKED");
+  const lockTime = allDoors ? time(allDoors.updateTime) : null;
   const windows = list("windowStatus").map((w) => {
     var _a2;
     const range = (_a2 = w.value) == null ? void 0 : _a2.doubleRange;
@@ -112,6 +133,12 @@ function parseTelemetry(body) {
     tires,
     doorsClosed,
     locked,
+    lockTime,
+    hoodClosed: hood === void 0 ? null : hood === "CLOSED",
+    tireStatus,
+    tirePlacard,
+    alarmTriggered,
+    batteryPerformance: (_g = (_f = text(value("xevBatteryPerformanceStatus"))) == null ? void 0 : _f.toUpperCase()) != null ? _g : null,
     windowsClosed,
     metricKeys: Object.keys(metrics).sort()
   };
