@@ -18,12 +18,18 @@ var __copyProps = (to, from, except, desc) => {
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var telemetry_exports = {};
 __export(telemetry_exports, {
+  BATTERY_12V_LOW_PERCENT: () => BATTERY_12V_LOW_PERCENT,
+  BATTERY_12V_LOW_VOLT: () => BATTERY_12V_LOW_VOLT,
   WHEELS: () => WHEELS,
+  battery12vLow: () => battery12vLow,
+  isBev: () => isBev,
   parseTelemetry: () => parseTelemetry,
   sanitize: () => sanitize
 });
 module.exports = __toCommonJS(telemetry_exports);
-const PRIVATE_KEY = /vin|position|latitude|longitude|location|gps|heading|address|plate|licen[cs]e|compass/i;
+const PRIVATE_KEY = /vin|position|latitude|longitude|location|gps|heading|address|plate|licen[cs]e|compass|^vehicle_?id$/i;
+const BATTERY_12V_LOW_PERCENT = 40;
+const BATTERY_12V_LOW_VOLT = 12.2;
 const WHEELS = {
   FRONT_LEFT: "frontLeft",
   FRONT_RIGHT: "frontRight",
@@ -47,6 +53,7 @@ function time(value) {
   return Number.isFinite(ms) ? ms : null;
 }
 function parseTelemetry(body) {
+  var _a;
   const metrics = typeof body.metrics === "object" && body.metrics !== null && !Array.isArray(body.metrics) ? body.metrics : {};
   const value = (key) => {
     const entry = metrics[key];
@@ -65,6 +72,21 @@ function parseTelemetry(body) {
   }
   const doors = list("doorStatus").map((door) => text(door.value));
   const doorsClosed = doors.length === 0 || doors.some((d) => d === null) ? null : doors.every((d) => (d == null ? void 0 : d.toUpperCase()) === "CLOSED");
+  const allDoors = list("doorLockStatus").find((e) => {
+    var _a2;
+    return ((_a2 = text(e.vehicleDoor)) == null ? void 0 : _a2.toUpperCase()) === "ALL_DOORS";
+  });
+  const lock = allDoors ? (_a = text(allDoors.value)) == null ? void 0 : _a.toUpperCase() : void 0;
+  const locked = lock === void 0 || lock === null ? null : lock.includes("LOCKED") && !lock.includes("UNLOCKED");
+  const windows = list("windowStatus").map((w) => {
+    var _a2;
+    const range = (_a2 = w.value) == null ? void 0 : _a2.doubleRange;
+    return num(range == null ? void 0 : range.upperBound);
+  });
+  const windowsClosed = windows.length === 0 || windows.some((w) => w === null) ? null : windows.every((w) => w === 0);
+  const chargerVolt = num(value("xevBatteryChargerVoltageOutput"));
+  const chargerAmp = num(value("xevBatteryChargerCurrentOutput"));
+  const chargePower = chargerVolt === null || chargerAmp === null ? null : Math.max(0, Math.round(chargerVolt * chargerAmp / 10) / 100);
   return {
     updateTime: time(body.updateTime),
     fuelLevel: num(value("fuelLevel")),
@@ -74,6 +96,11 @@ function parseTelemetry(body) {
     plugStatus: text(value("xevPlugChargerStatus")),
     chargeStatus: text(value("xevBatteryChargeDisplayStatus")),
     timeToFull: num(value("xevBatteryTimeToFullCharge")),
+    energyRemaining: num(value("xevBatteryEnergyRemaining")),
+    batteryCapacity: num(value("xevBatteryCapacity")),
+    evMaxRange: num(value("xevBatteryMaximumRange")),
+    batteryTemp: num(value("xevBatteryTemperature")),
+    chargePower,
     odometer: num(value("odometer")),
     battery12v: num(value("batteryStateOfCharge")),
     battery12vVoltage: num(value("batteryVoltage")),
@@ -84,6 +111,8 @@ function parseTelemetry(body) {
     alarm: text(value("alarmStatus")),
     tires,
     doorsClosed,
+    locked,
+    windowsClosed,
     metricKeys: Object.keys(metrics).sort()
   };
 }
@@ -105,9 +134,26 @@ function sanitize(value) {
   }
   return value;
 }
+function isBev(st) {
+  return st.soc !== null && st.fuelLevel === null;
+}
+function battery12vLow(st) {
+  var _a;
+  if (st.battery12v !== null) {
+    return st.battery12v < BATTERY_12V_LOW_PERCENT;
+  }
+  if (st.battery12vVoltage !== null && ((_a = st.ignition) == null ? void 0 : _a.toUpperCase()) === "OFF") {
+    return st.battery12vVoltage < BATTERY_12V_LOW_VOLT;
+  }
+  return null;
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  BATTERY_12V_LOW_PERCENT,
+  BATTERY_12V_LOW_VOLT,
   WHEELS,
+  battery12vLow,
+  isBev,
   parseTelemetry,
   sanitize
 });

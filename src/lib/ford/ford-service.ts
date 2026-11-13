@@ -29,7 +29,7 @@ import {
 } from './ford-client';
 import { FordAbortedError, FordClientRejectedError, FordLoginRequiredError, FordRateLimitedError } from './errors';
 import { rootObjects, vehicleChannel, vehicleObjects } from './objects';
-import { parseTelemetry, sanitize } from './telemetry';
+import { battery12vLow, isBev, parseTelemetry, sanitize } from './telemetry';
 
 export const MAX_BACKOFF_MS = 60 * 60_000;
 /** Warn this long before the browser login expires */
@@ -91,6 +91,8 @@ interface Vehicle {
     /** Pending poll timer (wrapped: TimerHandle is unknown) */
     timer: { handle: TimerHandle } | undefined;
     expiryWarned: boolean;
+    /** Last 12 V verdict (for logging changes only), undefined = not known yet */
+    weak12v: boolean | undefined;
 }
 
 /**
@@ -119,6 +121,7 @@ export class FordService {
             failureLog: new FailureLog(),
             timer: undefined,
             expiryWarned: false,
+            weak12v: undefined,
         }));
     }
 
@@ -304,23 +307,47 @@ export class FordService {
                 await this.deps.setState(`${ch}.${key}`, value);
             }
         };
+        // not meaningful in this situation: write null so no stale value stays visible
+        const clear = (key: string): Promise<void> => this.deps.setState(`${ch}.${key}`, null);
         await set('lastUpdate', st.updateTime);
         await set('fuelLevel', st.fuelLevel);
-        await set('fuelRange', st.fuelRange);
+        // a BEV reports fuelRange 0 - not meaningful
+        await (isBev(st) ? clear('fuelRange') : set('fuelRange', st.fuelRange));
         await set('soc', st.soc);
         await set('evRange', st.evRange);
         await set('plugStatus', st.plugStatus);
         await set('chargeStatus', st.chargeStatus);
-        await set('timeToFull', st.timeToFull);
+        // Ford keeps the last estimate after unplugging - only show it while plugged in
+        const unplugged = st.plugStatus?.toUpperCase() === 'DISCONNECTED';
+        await (unplugged ? clear('timeToFull') : set('timeToFull', st.timeToFull));
+        await set('energyRemaining', st.energyRemaining);
+        await set('batteryCapacity', st.batteryCapacity);
+        await set('evMaxRange', st.evMaxRange);
+        await set('batteryTemp', st.batteryTemp);
+        await set('chargePower', unplugged ? 0 : st.chargePower);
         await set('odometer', st.odometer);
         await set('battery12v', st.battery12v);
         await set('battery12vVoltage', st.battery12vVoltage);
+        const weak = battery12vLow(st);
+        await set('battery12vLow', weak);
+        if (weak !== null && weak !== v.weak12v) {
+            if (weak) {
+                this.deps.log.warn(
+                    `Ford ${v.config.name}: 12 V battery weak (${st.battery12v ?? '?'} %, ${st.battery12vVoltage ?? '?'} V)`,
+                );
+            } else if (v.weak12v) {
+                this.deps.log.info(`Ford ${v.config.name}: 12 V battery OK again`);
+            }
+            v.weak12v = weak;
+        }
         await set('oilLife', st.oilLife);
         await set('outsideTemp', st.outsideTemp);
         await set('coolantTemp', st.coolantTemp);
         await set('ignition', st.ignition);
         await set('alarm', st.alarm);
         await set('doorsClosed', st.doorsClosed);
+        await set('locked', st.locked);
+        await set('windowsClosed', st.windowsClosed);
         for (const [wheel, pressure] of Object.entries(st.tires)) {
             await set(`tires.${wheel}`, pressure);
         }

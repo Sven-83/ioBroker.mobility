@@ -73,9 +73,11 @@ Fuel price data: [Tankerkönig](https://creativecommons.tankerkoenig.de), licens
 - One Ford login gives access to exactly one vehicle, so two vehicles need two logins (vehicle 1 and 2).
 - Login error `AADB2C90085`: reported for FordPass accounts that only have shared vehicle access. The log
   then suggests trying the login with the owner's main FordPass account.
-- Values: fuel level and range, battery and electric range, plug and charging status, odometer, 12 V battery,
-  oil life, temperatures, ignition, alarm, doors, tyre pressure per wheel; `metricKeys` and `raw` (without VIN
-  and position) show what the vehicle delivers.
+- Values: fuel level and range, battery and electric range (also at 100 %), energy left and capacity in kWh,
+  battery temperature, plug and charging status, charging power, odometer, 12 V battery with a "weak" flag
+  (below 40 %, logged once), oil life, temperatures, ignition, alarm, doors, lock, windows, tyre pressure per
+  wheel; `metricKeys` and `raw` (without VIN, Ford vehicle ID and position) show what the vehicle delivers.
+- Values that do not apply are emptied: fuel range of a battery electric vehicle, time until full while unplugged.
 - Polls every 5-60 minutes (default 30) with a random offset; frequent polling can get the account locked.
 - No VIN, number plate or position in object IDs, states or logs.
 
@@ -193,8 +195,10 @@ Please refer to the [`dev-server` documentation](https://github.com/ioBroker/dev
 - (Sven-83) Super E10 prices of two stations from Tankerkönig with own 7-day price memory, rating and cheapest time
 - (Sven-83) Easee chargers via the observations API: status, power, energy, costs, start/stop
 - (Sven-83) Easee real-time values via the SignalR stream, polling as fallback
-- (Sven-83) Ford vehicles via FordConnect Query: browser login per vehicle, telemetry (not yet tested live)
+- (Sven-83) Ford vehicles via FordConnect Query: browser login per vehicle, telemetry
 - (Sven-83) Ford: hint for login error AADB2C90085 (shared vehicle access); admin >= 7.6.20
+- (Sven-83) Ford: lock, windows, battery energy/capacity/temperature, range at 100 %, charging power, weak 12 V
+  battery flag; empty fuel range for BEV and time until full while unplugged; vehicle ID removed from `raw`
 
 ### 0.0.1
 

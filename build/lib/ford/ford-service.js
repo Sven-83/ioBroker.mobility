@@ -51,7 +51,8 @@ class FordService {
       failures: 0,
       failureLog: new import_failure_log.FailureLog(),
       timer: void 0,
-      expiryWarned: false
+      expiryWarned: false,
+      weak12v: void 0
     }));
   }
   vehicles;
@@ -225,6 +226,7 @@ class FordService {
    * @param body - Telemetry answer
    */
   async apply(v, body) {
+    var _a, _b, _c;
     const ch = (0, import_objects.vehicleChannel)(v.config.slot);
     const st = (0, import_telemetry.parseTelemetry)(body);
     const set = async (key, value) => {
@@ -232,23 +234,44 @@ class FordService {
         await this.deps.setState(`${ch}.${key}`, value);
       }
     };
+    const clear = (key) => this.deps.setState(`${ch}.${key}`, null);
     await set("lastUpdate", st.updateTime);
     await set("fuelLevel", st.fuelLevel);
-    await set("fuelRange", st.fuelRange);
+    await ((0, import_telemetry.isBev)(st) ? clear("fuelRange") : set("fuelRange", st.fuelRange));
     await set("soc", st.soc);
     await set("evRange", st.evRange);
     await set("plugStatus", st.plugStatus);
     await set("chargeStatus", st.chargeStatus);
-    await set("timeToFull", st.timeToFull);
+    const unplugged = ((_a = st.plugStatus) == null ? void 0 : _a.toUpperCase()) === "DISCONNECTED";
+    await (unplugged ? clear("timeToFull") : set("timeToFull", st.timeToFull));
+    await set("energyRemaining", st.energyRemaining);
+    await set("batteryCapacity", st.batteryCapacity);
+    await set("evMaxRange", st.evMaxRange);
+    await set("batteryTemp", st.batteryTemp);
+    await set("chargePower", unplugged ? 0 : st.chargePower);
     await set("odometer", st.odometer);
     await set("battery12v", st.battery12v);
     await set("battery12vVoltage", st.battery12vVoltage);
+    const weak = (0, import_telemetry.battery12vLow)(st);
+    await set("battery12vLow", weak);
+    if (weak !== null && weak !== v.weak12v) {
+      if (weak) {
+        this.deps.log.warn(
+          `Ford ${v.config.name}: 12 V battery weak (${(_b = st.battery12v) != null ? _b : "?"} %, ${(_c = st.battery12vVoltage) != null ? _c : "?"} V)`
+        );
+      } else if (v.weak12v) {
+        this.deps.log.info(`Ford ${v.config.name}: 12 V battery OK again`);
+      }
+      v.weak12v = weak;
+    }
     await set("oilLife", st.oilLife);
     await set("outsideTemp", st.outsideTemp);
     await set("coolantTemp", st.coolantTemp);
     await set("ignition", st.ignition);
     await set("alarm", st.alarm);
     await set("doorsClosed", st.doorsClosed);
+    await set("locked", st.locked);
+    await set("windowsClosed", st.windowsClosed);
     for (const [wheel, pressure] of Object.entries(st.tires)) {
       await set(`tires.${wheel}`, pressure);
     }

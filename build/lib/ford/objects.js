@@ -57,6 +57,7 @@ function vehicleObjects(slot, name) {
   const ch = vehicleChannel(slot);
   const percent = { type: "number", role: "value", unit: "%" };
   const km = { type: "number", role: "value.distance", unit: "km" };
+  const kwh = { type: "number", role: "value.energy", unit: "kWh" };
   const list = [
     { id: ch, obj: { type: "channel", common: { name }, native: {} } },
     state(`${ch}.name`, n("Name", "Name"), { type: "string", role: "info.name" }),
@@ -100,12 +101,29 @@ function vehicleObjects(slot, name) {
       role: "value.interval",
       unit: "min"
     }),
+    state(`${ch}.energyRemaining`, n("Battery energy left", "Akku-Restenergie"), kwh),
+    state(`${ch}.batteryCapacity`, n("Battery capacity (usable)", "Akku-Kapazit\xE4t (nutzbar)"), kwh),
+    state(`${ch}.evMaxRange`, n("Electric range at 100 %", "Reichweite bei 100 %"), km),
+    state(`${ch}.batteryTemp`, n("Battery temperature (high voltage)", "Akkutemperatur (Hochvolt)"), {
+      type: "number",
+      role: "value.temperature",
+      unit: "\xB0C"
+    }),
+    state(`${ch}.chargePower`, n("Charging power", "Ladeleistung"), {
+      type: "number",
+      role: "value.power",
+      unit: "kW"
+    }),
     state(`${ch}.odometer`, n("Odometer", "Kilometerstand"), km),
     state(`${ch}.battery12v`, n("12 V battery", "12-V-Batterie"), percent),
     state(`${ch}.battery12vVoltage`, n("12 V battery voltage", "12-V-Batteriespannung"), {
       type: "number",
       role: "value.voltage",
       unit: "V"
+    }),
+    state(`${ch}.battery12vLow`, n("12 V battery weak", "12-V-Batterie schwach"), {
+      type: "boolean",
+      role: "indicator.lowbat"
     }),
     state(`${ch}.oilLife`, n("Oil life", "\xD6l-Restlebensdauer"), percent),
     state(`${ch}.outsideTemp`, n("Outside temperature", "Au\xDFentemperatur"), {
@@ -121,15 +139,24 @@ function vehicleObjects(slot, name) {
     state(`${ch}.ignition`, n("Ignition", "Z\xFCndung"), { type: "string", role: "text" }),
     state(`${ch}.alarm`, n("Alarm", "Alarmanlage"), { type: "string", role: "text" }),
     state(`${ch}.doorsClosed`, n("All doors closed", "Alle T\xFCren zu"), { type: "boolean", role: "indicator" }),
+    state(`${ch}.locked`, n("Locked", "Verriegelt"), { type: "boolean", role: "indicator.lock" }),
+    state(`${ch}.windowsClosed`, n("All windows closed", "Alle Fenster zu"), {
+      type: "boolean",
+      role: "indicator"
+    }),
     { id: `${ch}.tires`, obj: { type: "folder", common: { name: n("Tyre pressure", "Reifendruck") }, native: {} } },
     state(`${ch}.metricKeys`, n("Metrics the vehicle delivers", "Vom Fahrzeug gelieferte Werte"), {
       type: "string",
       role: "json"
     }),
-    state(`${ch}.raw`, n("Telemetry without VIN/position (JSON)", "Telemetrie ohne FIN/Standort (JSON)"), {
-      type: "string",
-      role: "json"
-    }),
+    state(
+      `${ch}.raw`,
+      n("Telemetry without VIN/ID/position (JSON)", "Telemetrie ohne FIN/Kennung/Standort (JSON)"),
+      {
+        type: "string",
+        role: "json"
+      }
+    ),
     state(`${ch}.refresh`, n("Read values now", "Werte jetzt lesen"), {
       type: "boolean",
       role: "button",

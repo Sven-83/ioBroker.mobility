@@ -64,6 +64,10 @@ class FakeApi implements FordApi {
     public reads = 0;
     public garageReads = 0;
     public auth: number | null = null;
+    public telemetry: Record<string, unknown> = {
+        updateTime: '2026-11-05T10:00:00Z',
+        metrics: { xevBatteryStateOfCharge: { value: 80 }, odometer: { value: 1234 } },
+    };
 
     public hasLogin(): Promise<boolean> {
         return Promise.resolve(this.loggedIn);
@@ -97,10 +101,7 @@ class FakeApi implements FordApi {
         if (this.telemetryError) {
             return Promise.reject(this.telemetryError);
         }
-        return Promise.resolve({
-            updateTime: '2026-11-05T10:00:00Z',
-            metrics: { xevBatteryStateOfCharge: { value: 80 }, odometer: { value: 1234 } },
-        });
+        return Promise.resolve(this.telemetry);
     }
 
     public abort(): void {}
@@ -214,5 +215,44 @@ describe('ford/service', () => {
         await t.clock.next();
         expect(t.logs.some(l => l.message.includes('expires on'))).to.equal(true);
         expect(t.states.has('ford.vehicle1.login.expires')).to.equal(true);
+    });
+
+    it('clears values that do not apply and warns about a weak 12 V battery once', async () => {
+        const t = setup();
+        const api = t.apis.get(1)!;
+        api.loggedIn = true;
+        api.telemetry = {
+            metrics: {
+                xevBatteryStateOfCharge: { value: 97 },
+                fuelRange: { value: 0 },
+                xevPlugChargerStatus: { value: 'DISCONNECTED' },
+                xevBatteryTimeToFullCharge: { value: 75 },
+                xevBatteryChargerVoltageOutput: { value: 6 },
+                xevBatteryChargerCurrentOutput: { value: 0.5 },
+                batteryStateOfCharge: { value: 30 },
+                doorLockStatus: [{ value: 'LOCKED', vehicleDoor: 'ALL_DOORS' }],
+            },
+        };
+        await t.service.start();
+        await t.clock.next();
+        expect(t.states.get('ford.vehicle1.fuelRange')).to.equal(null);
+        expect(t.states.get('ford.vehicle1.timeToFull')).to.equal(null);
+        expect(t.states.get('ford.vehicle1.chargePower')).to.equal(0);
+        expect(t.states.get('ford.vehicle1.locked')).to.equal(true);
+        expect(t.states.get('ford.vehicle1.battery12vLow')).to.equal(true);
+        await t.clock.next();
+        expect(t.logs.filter(l => l.message.includes('12 V battery weak'))).to.have.length(1);
+
+        api.telemetry = {
+            metrics: {
+                batteryStateOfCharge: { value: 80 },
+                xevPlugChargerStatus: { value: 'CONNECTED' },
+                xevBatteryTimeToFullCharge: { value: 75 },
+            },
+        };
+        await t.clock.next();
+        expect(t.states.get('ford.vehicle1.battery12vLow')).to.equal(false);
+        expect(t.states.get('ford.vehicle1.timeToFull')).to.equal(75);
+        expect(t.logs.some(l => l.message.includes('12 V battery OK again'))).to.equal(true);
     });
 });

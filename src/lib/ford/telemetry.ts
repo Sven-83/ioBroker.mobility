@@ -9,7 +9,13 @@
  */
 
 /** Keys removed from the stored raw answer (case-insensitive, anywhere in the tree) */
-const PRIVATE_KEY = /vin|position|latitude|longitude|location|gps|heading|address|plate|licen[cs]e|compass/i;
+const PRIVATE_KEY =
+    /vin|position|latitude|longitude|location|gps|heading|address|plate|licen[cs]e|compass|^vehicle_?id$/i;
+
+/** 12 V battery below this charge (%) counts as weak */
+export const BATTERY_12V_LOW_PERCENT = 40;
+/** Without a charge value: resting voltage below this counts as weak */
+export const BATTERY_12V_LOW_VOLT = 12.2;
 
 /** Tyre positions as delivered in tirePressure[].vehicleWheel */
 export const WHEELS: Record<string, string> = {
@@ -37,6 +43,16 @@ export interface VehicleState {
     chargeStatus: string | null;
     /** Minutes until full */
     timeToFull: number | null;
+    /** Energy left in the high-voltage battery in kWh */
+    energyRemaining: number | null;
+    /** Usable capacity of the high-voltage battery in kWh */
+    batteryCapacity: number | null;
+    /** Electric range at 100 % in km */
+    evMaxRange: number | null;
+    /** Temperature of the high-voltage battery in °C */
+    batteryTemp: number | null;
+    /** Charging power into the battery in kW (charger voltage x current) */
+    chargePower: number | null;
     /** Odometer in km */
     odometer: number | null;
     /** 12 V battery in % */
@@ -57,6 +73,10 @@ export interface VehicleState {
     tires: Record<string, number>;
     /** All doors closed, null if unknown */
     doorsClosed: boolean | null;
+    /** Vehicle locked (ALL_DOORS), null if unknown */
+    locked: boolean | null;
+    /** All windows closed, null if unknown */
+    windowsClosed: boolean | null;
     /** Names of all metrics the vehicle delivered */
     metricKeys: string[];
 }
@@ -124,6 +144,24 @@ export function parseTelemetry(body: Record<string, unknown>): VehicleState {
     const doorsClosed =
         doors.length === 0 || doors.some(d => d === null) ? null : doors.every(d => d?.toUpperCase() === 'CLOSED');
 
+    const allDoors = list('doorLockStatus').find(e => text(e.vehicleDoor)?.toUpperCase() === 'ALL_DOORS');
+    const lock = allDoors ? text(allDoors.value)?.toUpperCase() : undefined;
+    const locked = lock === undefined || lock === null ? null : lock.includes('LOCKED') && !lock.includes('UNLOCKED');
+
+    // windowStatus[].value.doubleRange = how far open in %, 0..0 = closed
+    const windows = list('windowStatus').map(w => {
+        const range = (w.value as { doubleRange?: { upperBound?: unknown } } | null)?.doubleRange;
+        return num(range?.upperBound);
+    });
+    const windowsClosed = windows.length === 0 || windows.some(w => w === null) ? null : windows.every(w => w === 0);
+
+    const chargerVolt = num(value('xevBatteryChargerVoltageOutput'));
+    const chargerAmp = num(value('xevBatteryChargerCurrentOutput'));
+    const chargePower =
+        chargerVolt === null || chargerAmp === null
+            ? null
+            : Math.max(0, Math.round((chargerVolt * chargerAmp) / 10) / 100);
+
     return {
         updateTime: time(body.updateTime),
         fuelLevel: num(value('fuelLevel')),
@@ -133,6 +171,11 @@ export function parseTelemetry(body: Record<string, unknown>): VehicleState {
         plugStatus: text(value('xevPlugChargerStatus')),
         chargeStatus: text(value('xevBatteryChargeDisplayStatus')),
         timeToFull: num(value('xevBatteryTimeToFullCharge')),
+        energyRemaining: num(value('xevBatteryEnergyRemaining')),
+        batteryCapacity: num(value('xevBatteryCapacity')),
+        evMaxRange: num(value('xevBatteryMaximumRange')),
+        batteryTemp: num(value('xevBatteryTemperature')),
+        chargePower,
         odometer: num(value('odometer')),
         battery12v: num(value('batteryStateOfCharge')),
         battery12vVoltage: num(value('batteryVoltage')),
@@ -143,6 +186,8 @@ export function parseTelemetry(body: Record<string, unknown>): VehicleState {
         alarm: text(value('alarmStatus')),
         tires,
         doorsClosed,
+        locked,
+        windowsClosed,
         metricKeys: Object.keys(metrics).sort(),
     };
 }
@@ -170,4 +215,29 @@ export function sanitize(value: unknown): unknown {
         return value.replace(/\b[A-HJ-NPR-Z0-9]{17}\b/g, '<vin>');
     }
     return value;
+}
+
+/**
+ * Battery electric vehicle: delivers a high-voltage charge but no fuel level.
+ *
+ * @param st - Parsed state
+ */
+export function isBev(st: VehicleState): boolean {
+    return st.soc !== null && st.fuelLevel === null;
+}
+
+/**
+ * 12 V battery weak? Charge below BATTERY_12V_LOW_PERCENT, or without a charge value the resting voltage
+ * (ignition off) below BATTERY_12V_LOW_VOLT. null = unknown.
+ *
+ * @param st - Parsed state
+ */
+export function battery12vLow(st: VehicleState): boolean | null {
+    if (st.battery12v !== null) {
+        return st.battery12v < BATTERY_12V_LOW_PERCENT;
+    }
+    if (st.battery12vVoltage !== null && st.ignition?.toUpperCase() === 'OFF') {
+        return st.battery12vVoltage < BATTERY_12V_LOW_VOLT;
+    }
+    return null;
 }

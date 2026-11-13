@@ -11,7 +11,7 @@ import {
     type FordToken,
     type TokenStore,
 } from './ford-client';
-import { parseTelemetry, sanitize } from './telemetry';
+import { battery12vLow, isBev, parseTelemetry, sanitize } from './telemetry';
 import { readFordConfig, DEFAULT_REDIRECT_URI, MIN_INTERVAL_MIN } from './config';
 import { parseVehicleCommandId } from './objects';
 import { sharedAccessHint } from './ford-service';
@@ -283,6 +283,78 @@ describe('ford/telemetry', () => {
         expect(clean).not.to.contain('lat');
         expect(clean).to.contain('fuelLevel');
         expect(sanitize({ note: 'car WF0XXXXXXXXXXXXXX here' })).to.deep.equal({ note: 'car <vin> here' });
+    });
+
+    it('removes the Ford vehicle ID but keeps vehicleWheel/vehicleDoor', () => {
+        const clean = sanitize({
+            vehicleId: 'id-placeholder',
+            metrics: { tirePressure: [{ value: 240, vehicleWheel: 'FRONT_LEFT' }] },
+        }) as Record<string, unknown>;
+        expect(clean).not.to.have.property('vehicleId');
+        expect(JSON.stringify(clean)).to.contain('vehicleWheel');
+    });
+
+    // shapes as delivered by a battery electric vehicle (values made up)
+    const bev = {
+        updateTime: '2026-11-05T10:00:00Z',
+        metrics: {
+            xevBatteryStateOfCharge: { value: 97 },
+            xevBatteryActualStateOfCharge: { value: 80.33 },
+            xevBatteryRange: { value: 269.2 },
+            xevBatteryMaximumRange: { value: 296.9 },
+            xevBatteryEnergyRemaining: { value: 38 },
+            xevBatteryCapacity: { value: 49.4 },
+            xevBatteryTemperature: { value: 7.5 },
+            xevBatteryChargerVoltageOutput: { value: 360 },
+            xevBatteryChargerCurrentOutput: { value: 30.5 },
+            xevPlugChargerStatus: { value: 'CONNECTED' },
+            fuelRange: { value: 0 },
+            batteryStateOfCharge: { value: 86 },
+            doorLockStatus: [
+                { value: 'UNLOCKED', vehicleDoor: 'ALL_DOORS' },
+                { value: 'LOCKED', vehicleDoor: 'UNSPECIFIED_FRONT' },
+            ],
+            windowStatus: [
+                { value: { doubleRange: { lowerBound: 0, upperBound: 0 } } },
+                { value: { doubleRange: { lowerBound: 0, upperBound: 10 } } },
+            ],
+        },
+    };
+
+    it('maps battery, charging, lock and window values', () => {
+        const st = parseTelemetry(bev);
+        expect(st.soc).to.equal(97);
+        expect(st.evMaxRange).to.equal(296.9);
+        expect(st.energyRemaining).to.equal(38);
+        expect(st.batteryCapacity).to.equal(49.4);
+        expect(st.batteryTemp).to.equal(7.5);
+        expect(st.chargePower).to.equal(10.98);
+        expect(st.locked).to.equal(false);
+        expect(st.windowsClosed).to.equal(false);
+        expect(isBev(st)).to.equal(true);
+        expect(isBev(parseTelemetry(body))).to.equal(false);
+
+        const closed = parseTelemetry({
+            metrics: {
+                doorLockStatus: [{ value: 'LOCKED', vehicleDoor: 'ALL_DOORS' }],
+                windowStatus: [{ value: { doubleRange: { lowerBound: 0, upperBound: 0 } } }],
+            },
+        });
+        expect(closed.locked).to.equal(true);
+        expect(closed.windowsClosed).to.equal(true);
+        // not delivered = unknown
+        expect(parseTelemetry(body).locked).to.equal(null);
+        expect(parseTelemetry(body).windowsClosed).to.equal(null);
+    });
+
+    it('rates the 12 V battery by charge, else by resting voltage', () => {
+        const rate = (metrics: Record<string, unknown>): boolean | null => battery12vLow(parseTelemetry({ metrics }));
+        expect(rate({ batteryStateOfCharge: { value: 30 } })).to.equal(true);
+        expect(rate({ batteryStateOfCharge: { value: 86 } })).to.equal(false);
+        expect(rate({ batteryVoltage: { value: 12.1 }, ignitionStatus: { value: 'OFF' } })).to.equal(true);
+        // engine running: voltage says nothing about the battery
+        expect(rate({ batteryVoltage: { value: 12.1 }, ignitionStatus: { value: 'RUN' } })).to.equal(null);
+        expect(rate({})).to.equal(null);
     });
 });
 

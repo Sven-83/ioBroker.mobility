@@ -9,12 +9,13 @@
  *    ├─ login.status            text     OK / login needed / error
  *    ├─ login.expires           time     the browser login expires about one year after it was made
  *    ├─ login.token             (encrypted, internal)
- *    ├─ lastUpdate, fuelLevel, fuelRange, soc, evRange, plugStatus, chargeStatus, timeToFull,
- *    │  odometer, battery12v, battery12vVoltage, oilLife, outsideTemp, coolantTemp, ignition,
- *    │  alarm, doorsClosed
+ *    ├─ lastUpdate, fuelLevel, fuelRange (empty for BEV), soc, evRange, plugStatus, chargeStatus,
+ *    │  timeToFull (empty when unplugged), energyRemaining, batteryCapacity, evMaxRange, batteryTemp,
+ *    │  chargePower, odometer, battery12v, battery12vVoltage, battery12vLow, oilLife, outsideTemp,
+ *    │  coolantTemp, ignition, alarm, doorsClosed, locked, windowsClosed
  *    ├─ tires.frontLeft/frontRight/rearLeft/rearRight   kPa
  *    ├─ metricKeys              json     which metrics the vehicle delivers
- *    ├─ raw                     json     telemetry without VIN/position (for mapping more later)
+ *    ├─ raw                     json     telemetry without VIN/vehicle ID/position (for mapping more later)
  *    └─ refresh                 button
  *
  * No VIN, no number plate, no position in IDs or states (project rule).
@@ -90,6 +91,7 @@ export function vehicleObjects(slot: number, name: string): ObjectDefinition[] {
     const ch = vehicleChannel(slot);
     const percent = { type: 'number', role: 'value', unit: '%' } as const;
     const km = { type: 'number', role: 'value.distance', unit: 'km' } as const;
+    const kwh = { type: 'number', role: 'value.energy', unit: 'kWh' } as const;
     const list: ObjectDefinition[] = [
         { id: ch, obj: { type: 'channel', common: { name }, native: {} } },
         state(`${ch}.name`, n('Name', 'Name'), { type: 'string', role: 'info.name' }),
@@ -133,12 +135,29 @@ export function vehicleObjects(slot: number, name: string): ObjectDefinition[] {
             role: 'value.interval',
             unit: 'min',
         }),
+        state(`${ch}.energyRemaining`, n('Battery energy left', 'Akku-Restenergie'), kwh),
+        state(`${ch}.batteryCapacity`, n('Battery capacity (usable)', 'Akku-Kapazität (nutzbar)'), kwh),
+        state(`${ch}.evMaxRange`, n('Electric range at 100 %', 'Reichweite bei 100 %'), km),
+        state(`${ch}.batteryTemp`, n('Battery temperature (high voltage)', 'Akkutemperatur (Hochvolt)'), {
+            type: 'number',
+            role: 'value.temperature',
+            unit: '°C',
+        }),
+        state(`${ch}.chargePower`, n('Charging power', 'Ladeleistung'), {
+            type: 'number',
+            role: 'value.power',
+            unit: 'kW',
+        }),
         state(`${ch}.odometer`, n('Odometer', 'Kilometerstand'), km),
         state(`${ch}.battery12v`, n('12 V battery', '12-V-Batterie'), percent),
         state(`${ch}.battery12vVoltage`, n('12 V battery voltage', '12-V-Batteriespannung'), {
             type: 'number',
             role: 'value.voltage',
             unit: 'V',
+        }),
+        state(`${ch}.battery12vLow`, n('12 V battery weak', '12-V-Batterie schwach'), {
+            type: 'boolean',
+            role: 'indicator.lowbat',
         }),
         state(`${ch}.oilLife`, n('Oil life', 'Öl-Restlebensdauer'), percent),
         state(`${ch}.outsideTemp`, n('Outside temperature', 'Außentemperatur'), {
@@ -154,15 +173,24 @@ export function vehicleObjects(slot: number, name: string): ObjectDefinition[] {
         state(`${ch}.ignition`, n('Ignition', 'Zündung'), { type: 'string', role: 'text' }),
         state(`${ch}.alarm`, n('Alarm', 'Alarmanlage'), { type: 'string', role: 'text' }),
         state(`${ch}.doorsClosed`, n('All doors closed', 'Alle Türen zu'), { type: 'boolean', role: 'indicator' }),
+        state(`${ch}.locked`, n('Locked', 'Verriegelt'), { type: 'boolean', role: 'indicator.lock' }),
+        state(`${ch}.windowsClosed`, n('All windows closed', 'Alle Fenster zu'), {
+            type: 'boolean',
+            role: 'indicator',
+        }),
         { id: `${ch}.tires`, obj: { type: 'folder', common: { name: n('Tyre pressure', 'Reifendruck') }, native: {} } },
         state(`${ch}.metricKeys`, n('Metrics the vehicle delivers', 'Vom Fahrzeug gelieferte Werte'), {
             type: 'string',
             role: 'json',
         }),
-        state(`${ch}.raw`, n('Telemetry without VIN/position (JSON)', 'Telemetrie ohne FIN/Standort (JSON)'), {
-            type: 'string',
-            role: 'json',
-        }),
+        state(
+            `${ch}.raw`,
+            n('Telemetry without VIN/ID/position (JSON)', 'Telemetrie ohne FIN/Kennung/Standort (JSON)'),
+            {
+                type: 'string',
+                role: 'json',
+            },
+        ),
         state(`${ch}.refresh`, n('Read values now', 'Werte jetzt lesen'), {
             type: 'boolean',
             role: 'button',
