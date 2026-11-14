@@ -12,7 +12,7 @@
  * close together can merge - good enough for a weekly share).
  */
 
-import { dayKey, lastMonthKeys, lastWeekKeys, weekKey } from '../util/periods';
+import { dayKey, lastMonthKeys, lastWeekKeys, weekKey, lastDayKeys } from '../util/periods';
 
 export { dayKey, weekKey };
 
@@ -271,6 +271,17 @@ export class VehicleHistory {
      */
     public weeks(now: number, count: number, tankLitres: number): PeriodSummary[] {
         return lastWeekKeys(now, count).map(key => this.summary(key, d => weekKey(d) === key, tankLitres));
+    }
+
+    /**
+     * Last days (oldest first, today included).
+     *
+     * @param now - Current time
+     * @param count - Number of days
+     * @param tankLitres - Tank size (0 = unknown)
+     */
+    public dailies(now: number, count: number, tankLitres: number): PeriodSummary[] {
+        return lastDayKeys(now, count).map(key => this.summary(key, d => d === key, tankLitres));
     }
 
     /**

@@ -35,6 +35,7 @@ export const BACKFILL_LIMIT = Date.UTC(2016, 0, 1);
 /** Longest backoff */
 export const MAX_BACKOFF_MS = 6 * 3_600_000;
 /** Weeks / months in the JSON states */
+export const DAYS = 14;
 export const WEEKS = 12;
 export const MONTHS = 13;
 
@@ -318,6 +319,7 @@ export class EaseeSessions implements SessionControl {
         const months = report.months(now, MONTHS);
         const month = months[months.length - 1];
         const year = report.year(new Date(now).getFullYear());
+        await this.deps.setState(`${p}.days`, JSON.stringify(report.days(now, DAYS)));
         await this.deps.setState(`${p}.weeks`, JSON.stringify(report.weeks(now, WEEKS)));
         await this.deps.setState(`${p}.months`, JSON.stringify(months));
         await this.deps.setState(`${p}.monthEnergy`, month.kwh);

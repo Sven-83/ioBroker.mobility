@@ -217,6 +217,9 @@ Please refer to the [`dev-server` documentation](https://github.com/ioBroker/dev
 - (Sven-83) Ford: dashboard warnings per vehicle (`warnings`, `warningLevel`, `warningCount`)
 - (Sven-83) Ford: history per vehicle (km, long trips, consumption, refuels, tyre trend), tank size setting
 - (Sven-83) Easee: charging sessions incl. the past, kWh and costs per week, month and year
+- (Sven-83) Fuel: average price per hour of day (`hourProfile`) and price changes of 7 days (`history7d`) for charts
+- (Sven-83) Ford/Easee: values of the last 14 days (`history.days`), tank size as state (`tankCapacity`)
+- (Sven-83) Ford: daily read of the vehicle charge log (test stage, `chargeLogs` without VIN and places)
 
 ### 0.0.1
 

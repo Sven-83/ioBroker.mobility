@@ -62,3 +62,19 @@ export function lastMonthKeys(now: number, count: number): string[] {
     }
     return keys;
 }
+
+/**
+ * Keys of the last days ("2026-11-14"), oldest first, today included.
+ *
+ * @param now - Current time
+ * @param count - Number of days
+ */
+export function lastDayKeys(now: number, count: number): string[] {
+    const date = new Date(now);
+    const keys: string[] = [];
+    for (let i = count - 1; i >= 0; i--) {
+        // noon avoids DST edges
+        keys.push(dayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - i, 12).getTime()));
+    }
+    return keys;
+}

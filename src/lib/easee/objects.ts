@@ -207,6 +207,7 @@ export function historyObjects(prefix: string, withCost: boolean): ObjectDefinit
             id: p,
             obj: { type: 'channel', common: { name: n('Charging sessions', 'Ladevorgänge') }, native: {} },
         },
+        state(`${p}.days`, n('Last 14 days (JSON)', 'Letzte 14 Tage (JSON)'), json),
         state(`${p}.weeks`, n('Last 12 weeks (JSON)', 'Letzte 12 Wochen (JSON)'), json),
         state(`${p}.months`, n('Last 13 months (JSON)', 'Letzte 13 Monate (JSON)'), json),
         state(`${p}.monthEnergy`, n('Charged this month', 'Geladen diesen Monat'), kwh),

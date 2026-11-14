@@ -45,6 +45,16 @@ describe('ford/history', () => {
         expect(week.longKm).to.equal(75);
     });
 
+    it('gives day values, today last', () => {
+        const h = new VehicleHistory();
+        h.add(sample(T0, { odo: 1000 }));
+        h.add(sample(T0 + 30 * MIN, { odo: 1020 }));
+        const days = h.dailies(T0 + DAY, 3, 0);
+        expect(days).to.have.length(3);
+        expect(days[1].km).to.equal(20);
+        expect(days[2].km).to.equal(0);
+    });
+
     it('computes kWh/100 km from driving and counts charging separately', () => {
         const h = new VehicleHistory();
         h.add(sample(T0, { odo: 1000, energy: 40 }));

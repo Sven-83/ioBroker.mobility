@@ -19,6 +19,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var periods_exports = {};
 __export(periods_exports, {
   dayKey: () => dayKey,
+  lastDayKeys: () => lastDayKeys,
   lastMonthKeys: () => lastMonthKeys,
   lastWeekKeys: () => lastWeekKeys,
   weekKey: () => weekKey
@@ -57,9 +58,18 @@ function lastMonthKeys(now, count) {
   }
   return keys;
 }
+function lastDayKeys(now, count) {
+  const date = new Date(now);
+  const keys = [];
+  for (let i = count - 1; i >= 0; i--) {
+    keys.push(dayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - i, 12).getTime()));
+  }
+  return keys;
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   dayKey,
+  lastDayKeys,
   lastMonthKeys,
   lastWeekKeys,
   weekKey

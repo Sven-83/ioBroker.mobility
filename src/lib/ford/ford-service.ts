@@ -14,6 +14,7 @@
  * A rejected refresh token -> new login needed (status + log), polling of that vehicle pauses.
  */
 
+import { MAX_LOG_CHARS, countEntries, isoDay, sanitizeChargeLogs } from './charge-logs';
 import { describeError } from '../fuel/errors';
 import type { Logger, TimerHandle } from '../fuel/fuel-service';
 import type { ObjectDefinition } from '../fuel/objects';
@@ -39,6 +40,10 @@ export const EXPIRY_WARNING_MS = 7 * 24 * 3_600_000;
 /** Garage info is read again after this time */
 export const GARAGE_MAX_AGE_MS = 24 * 3_600_000;
 
+/** Charge log: once a day, the last 30 days */
+export const CHARGE_LOG_EVERY_MS = 24 * 3_600_000;
+export const CHARGE_LOG_DAYS = 30;
+
 /** The part of the Ford client the service needs */
 export interface FordApi {
     /** A login is stored */
@@ -53,6 +58,8 @@ export interface FordApi {
     getGarage(): Promise<GarageInfo>;
     /** Telemetry */
     getTelemetry(): Promise<Record<string, unknown>>;
+    /** Charge log (test stage), optional */
+    getChargeLogs?(startDate: string, endDate: string): Promise<unknown>;
     /** Cancels requests */
     abort(): void;
 }
@@ -99,6 +106,8 @@ interface Vehicle {
     expiryWarned: boolean;
     /** Last 12 V verdict (for logging changes only), undefined = not known yet */
     weak12v: boolean | undefined;
+    /** Last read of the charge log (epoch ms), null = not yet */
+    chargeLogsAt: number | null;
     /** Since when the vehicle is unlocked (epoch ms), null if locked or unknown */
     unlockedSince: number | null;
     /** Trips, consumption, tyre trend */
@@ -133,6 +142,7 @@ export class FordService {
             expiryWarned: false,
             weak12v: undefined,
             unlockedSince: null,
+            chargeLogsAt: null,
             history: new VehicleHistory(),
         }));
     }
@@ -285,6 +295,7 @@ export class FordService {
             }
             this.updateConnection();
             await this.checkExpiry(v);
+            await this.readChargeLogs(v);
         } catch (error) {
             if (error instanceof FordAbortedError || this.stopped) {
                 return;
@@ -310,6 +321,40 @@ export class FordService {
             this.deps.onConnection(false);
         }
         this.schedulePoll(v, nextDelay + Math.floor(this.deps.random() * 30_000));
+    }
+
+    /**
+     * Reads the charge log once a day (test stage). Never affects the normal poll: errors only end up in
+     * chargeLogsStatus and as one info line in the log.
+     *
+     * @param v - Vehicle
+     */
+    private async readChargeLogs(v: Vehicle): Promise<void> {
+        const now = this.deps.now();
+        if (!v.client.getChargeLogs || (v.chargeLogsAt !== null && now - v.chargeLogsAt < CHARGE_LOG_EVERY_MS)) {
+            return;
+        }
+        v.chargeLogsAt = now;
+        const ch = vehicleChannel(v.config.slot);
+        try {
+            const body = sanitizeChargeLogs(
+                await v.client.getChargeLogs(isoDay(now - CHARGE_LOG_DAYS * 86_400_000), isoDay(now)),
+            );
+            const json = JSON.stringify(body ?? null);
+            const count = countEntries(body);
+            await this.deps.setState(
+                `${ch}.chargeLogs`,
+                json.length <= MAX_LOG_CHARS ? json : json.slice(0, MAX_LOG_CHARS),
+            );
+            await this.deps.setState(`${ch}.chargeLogsStatus`, `ok, ${count} entries (${isoDay(now)})`);
+            this.deps.log.info(`Ford ${v.config.name}: charge log read, ${count} entries`);
+        } catch (error) {
+            if (error instanceof FordAbortedError || this.stopped) {
+                return;
+            }
+            await this.deps.setState(`${ch}.chargeLogsStatus`, `${describeError(error)} (${isoDay(now)})`);
+            this.deps.log.info(`Ford ${v.config.name}: charge log not available: ${describeError(error)}`);
+        }
     }
 
     /**
@@ -416,6 +461,8 @@ export class FordService {
         const recent = weeks.slice(-4);
         const kwh = recent.reduce((a, w) => a + w.kwhUsed, 0);
         const km = recent.reduce((a, w) => a + w.kmEv, 0);
+        await this.deps.setState(`${ch}.tankCapacity`, tank > 0 ? tank : null);
+        await this.deps.setState(`${ch}.history.days`, JSON.stringify(v.history.dailies(now, 14, tank)));
         await this.deps.setState(`${ch}.history.weeks`, JSON.stringify(weeks));
         await this.deps.setState(`${ch}.history.months`, JSON.stringify(v.history.months(now, 12, tank)));
         await this.deps.setState(`${ch}.history.tyreLoss`, JSON.stringify(v.history.tyreLoss(now)));

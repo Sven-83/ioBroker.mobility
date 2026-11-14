@@ -168,6 +168,15 @@ class SessionReport {
     return (0, import_periods.lastWeekKeys)(now, count).map((key) => this.sum(key, (s) => (0, import_periods.weekKey)((0, import_periods.dayKey)(s.start)) === key));
   }
   /**
+   * Last days, oldest first, today included.
+   *
+   * @param now - Current time
+   * @param count - Number of days
+   */
+  days(now, count) {
+    return (0, import_periods.lastDayKeys)(now, count).map((key) => this.sum(key, (s) => (0, import_periods.dayKey)(s.start) === key));
+  }
+  /**
    * Last months, oldest first, current month included.
    *
    * @param now - Current time

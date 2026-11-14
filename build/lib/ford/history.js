@@ -182,6 +182,16 @@ class VehicleHistory {
     return (0, import_periods.lastWeekKeys)(now, count).map((key) => this.summary(key, (d) => (0, import_periods.weekKey)(d) === key, tankLitres));
   }
   /**
+   * Last days (oldest first, today included).
+   *
+   * @param now - Current time
+   * @param count - Number of days
+   * @param tankLitres - Tank size (0 = unknown)
+   */
+  dailies(now, count, tankLitres) {
+    return (0, import_periods.lastDayKeys)(now, count).map((key) => this.summary(key, (d) => d === key, tankLitres));
+  }
+  /**
    * Last months (oldest first, current month included).
    *
    * @param now - Current time

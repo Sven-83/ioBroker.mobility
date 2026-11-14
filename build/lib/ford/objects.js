@@ -149,6 +149,22 @@ function vehicleObjects(slot, name) {
       id: `${ch}.history`,
       obj: { type: "folder", common: { name: n("History (dashboard)", "Verlauf (Dashboard)") }, native: {} }
     },
+    state(`${ch}.history.days`, n("Last 14 days (JSON)", "Letzte 14 Tage (JSON)"), {
+      type: "string",
+      role: "json"
+    }),
+    state(
+      `${ch}.chargeLogs`,
+      n("Charge log of the vehicle (JSON, test)", "Ladeprotokoll des Fahrzeugs (JSON, Test)"),
+      {
+        type: "string",
+        role: "json"
+      }
+    ),
+    state(`${ch}.chargeLogsStatus`, n("Charge log: last answer", "Ladeprotokoll: letzte Antwort"), {
+      type: "string",
+      role: "text"
+    }),
     state(`${ch}.history.weeks`, n("Last 8 weeks (JSON)", "Letzte 8 Wochen (JSON)"), {
       type: "string",
       role: "json"
@@ -182,6 +198,11 @@ function vehicleObjects(slot, name) {
     state(`${ch}.history.lastRefuel`, n("Last refuel (JSON)", "Letztes Tanken (JSON)"), {
       type: "string",
       role: "json"
+    }),
+    state(`${ch}.tankCapacity`, n("Tank size (instance settings)", "Tankgr\xF6\xDFe (Instanz-Einstellungen)"), {
+      type: "number",
+      role: "value",
+      unit: "l"
     }),
     state(`${ch}.warnings`, n("Warnings (JSON, worst first)", "Warnungen (JSON, schlimmste zuerst)"), {
       type: "string",

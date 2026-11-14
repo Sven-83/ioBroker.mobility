@@ -13,7 +13,7 @@
  * Sessions are never removed from the store (owner's rule: nothing Easee is ever deleted).
  */
 
-import { dayKey, lastMonthKeys, lastWeekKeys, weekKey } from '../util/periods';
+import { dayKey, lastMonthKeys, lastWeekKeys, weekKey, lastDayKeys } from '../util/periods';
 
 /** One charging session */
 export interface ChargeSession {
@@ -249,6 +249,16 @@ export class SessionReport {
      */
     public weeks(now: number, count: number): SessionSummary[] {
         return lastWeekKeys(now, count).map(key => this.sum(key, s => weekKey(dayKey(s.start)) === key));
+    }
+
+    /**
+     * Last days, oldest first, today included.
+     *
+     * @param now - Current time
+     * @param count - Number of days
+     */
+    public days(now: number, count: number): SessionSummary[] {
+        return lastDayKeys(now, count).map(key => this.sum(key, s => dayKey(s.start) === key));
     }
 
     /**

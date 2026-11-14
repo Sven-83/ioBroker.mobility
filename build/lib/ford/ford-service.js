@@ -18,6 +18,8 @@ var __copyProps = (to, from, except, desc) => {
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var ford_service_exports = {};
 __export(ford_service_exports, {
+  CHARGE_LOG_DAYS: () => CHARGE_LOG_DAYS,
+  CHARGE_LOG_EVERY_MS: () => CHARGE_LOG_EVERY_MS,
   EXPIRY_WARNING_MS: () => EXPIRY_WARNING_MS,
   FordService: () => FordService,
   GARAGE_MAX_AGE_MS: () => GARAGE_MAX_AGE_MS,
@@ -25,6 +27,7 @@ __export(ford_service_exports, {
   sharedAccessHint: () => sharedAccessHint
 });
 module.exports = __toCommonJS(ford_service_exports);
+var import_charge_logs = require("./charge-logs");
 var import_errors = require("../fuel/errors");
 var import_failure_log = require("../util/failure-log");
 var import_ford_client = require("./ford-client");
@@ -36,6 +39,8 @@ var import_history = require("./history");
 const MAX_BACKOFF_MS = 60 * 6e4;
 const EXPIRY_WARNING_MS = 7 * 24 * 36e5;
 const GARAGE_MAX_AGE_MS = 24 * 36e5;
+const CHARGE_LOG_EVERY_MS = 24 * 36e5;
+const CHARGE_LOG_DAYS = 30;
 class FordService {
   /**
    * @param config - Validated Ford config (enabled)
@@ -56,6 +61,7 @@ class FordService {
       expiryWarned: false,
       weak12v: void 0,
       unlockedSince: null,
+      chargeLogsAt: null,
       history: new import_history.VehicleHistory()
     }));
   }
@@ -204,6 +210,7 @@ class FordService {
       }
       this.updateConnection();
       await this.checkExpiry(v);
+      await this.readChargeLogs(v);
     } catch (error) {
       if (error instanceof import_errors2.FordAbortedError || this.stopped) {
         return;
@@ -229,6 +236,39 @@ class FordService {
       this.deps.onConnection(false);
     }
     this.schedulePoll(v, nextDelay + Math.floor(this.deps.random() * 3e4));
+  }
+  /**
+   * Reads the charge log once a day (test stage). Never affects the normal poll: errors only end up in
+   * chargeLogsStatus and as one info line in the log.
+   *
+   * @param v - Vehicle
+   */
+  async readChargeLogs(v) {
+    const now = this.deps.now();
+    if (!v.client.getChargeLogs || v.chargeLogsAt !== null && now - v.chargeLogsAt < CHARGE_LOG_EVERY_MS) {
+      return;
+    }
+    v.chargeLogsAt = now;
+    const ch = (0, import_objects.vehicleChannel)(v.config.slot);
+    try {
+      const body = (0, import_charge_logs.sanitizeChargeLogs)(
+        await v.client.getChargeLogs((0, import_charge_logs.isoDay)(now - CHARGE_LOG_DAYS * 864e5), (0, import_charge_logs.isoDay)(now))
+      );
+      const json = JSON.stringify(body != null ? body : null);
+      const count = (0, import_charge_logs.countEntries)(body);
+      await this.deps.setState(
+        `${ch}.chargeLogs`,
+        json.length <= import_charge_logs.MAX_LOG_CHARS ? json : json.slice(0, import_charge_logs.MAX_LOG_CHARS)
+      );
+      await this.deps.setState(`${ch}.chargeLogsStatus`, `ok, ${count} entries (${(0, import_charge_logs.isoDay)(now)})`);
+      this.deps.log.info(`Ford ${v.config.name}: charge log read, ${count} entries`);
+    } catch (error) {
+      if (error instanceof import_errors2.FordAbortedError || this.stopped) {
+        return;
+      }
+      await this.deps.setState(`${ch}.chargeLogsStatus`, `${(0, import_errors.describeError)(error)} (${(0, import_charge_logs.isoDay)(now)})`);
+      this.deps.log.info(`Ford ${v.config.name}: charge log not available: ${(0, import_errors.describeError)(error)}`);
+    }
   }
   /**
    * Writes the states of one vehicle.
@@ -328,6 +368,8 @@ class FordService {
     const recent = weeks.slice(-4);
     const kwh = recent.reduce((a, w) => a + w.kwhUsed, 0);
     const km = recent.reduce((a, w) => a + w.kmEv, 0);
+    await this.deps.setState(`${ch}.tankCapacity`, tank > 0 ? tank : null);
+    await this.deps.setState(`${ch}.history.days`, JSON.stringify(v.history.dailies(now, 14, tank)));
     await this.deps.setState(`${ch}.history.weeks`, JSON.stringify(weeks));
     await this.deps.setState(`${ch}.history.months`, JSON.stringify(v.history.months(now, 12, tank)));
     await this.deps.setState(`${ch}.history.tyreLoss`, JSON.stringify(v.history.tyreLoss(now)));
@@ -415,6 +457,8 @@ function sharedAccessHint(code) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  CHARGE_LOG_DAYS,
+  CHARGE_LOG_EVERY_MS,
   EXPIRY_WARNING_MS,
   FordService,
   GARAGE_MAX_AGE_MS,

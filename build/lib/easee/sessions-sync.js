@@ -21,6 +21,7 @@ __export(sessions_sync_exports, {
   AFTER_UNPLUG_MS: () => AFTER_UNPLUG_MS,
   BACKFILL_LIMIT: () => BACKFILL_LIMIT,
   BACKFILL_WINDOW_MS: () => BACKFILL_WINDOW_MS,
+  DAYS: () => DAYS,
   EaseeSessions: () => EaseeSessions,
   FIRST_REQUEST_MS: () => FIRST_REQUEST_MS,
   MAX_BACKOFF_MS: () => MAX_BACKOFF_MS,
@@ -44,6 +45,7 @@ const BACKFILL_WINDOW_MS = 365 * DAY;
 const RECENT_WINDOW_MS = 30 * DAY;
 const BACKFILL_LIMIT = Date.UTC(2016, 0, 1);
 const MAX_BACKOFF_MS = 6 * 36e5;
+const DAYS = 14;
 const WEEKS = 12;
 const MONTHS = 13;
 class EaseeSessions {
@@ -253,6 +255,7 @@ class EaseeSessions {
     const months = report.months(now, MONTHS);
     const month = months[months.length - 1];
     const year = report.year(new Date(now).getFullYear());
+    await this.deps.setState(`${p}.days`, JSON.stringify(report.days(now, DAYS)));
     await this.deps.setState(`${p}.weeks`, JSON.stringify(report.weeks(now, WEEKS)));
     await this.deps.setState(`${p}.months`, JSON.stringify(months));
     await this.deps.setState(`${p}.monthEnergy`, month.kwh);
@@ -319,6 +322,7 @@ class EaseeSessions {
   AFTER_UNPLUG_MS,
   BACKFILL_LIMIT,
   BACKFILL_WINDOW_MS,
+  DAYS,
   EaseeSessions,
   FIRST_REQUEST_MS,
   MAX_BACKOFF_MS,

@@ -162,6 +162,19 @@ class FordClient {
     }
     return body;
   }
+  /**
+   * Charge log of the vehicle (test stage, see charge-logs.ts).
+   *
+   * @param startDate - YYYY-MM-DD
+   * @param endDate - YYYY-MM-DD
+   */
+  async getChargeLogs(startDate, endDate) {
+    const day = /^\d{4}-\d{2}-\d{2}$/;
+    if (!day.test(startDate) || !day.test(endDate)) {
+      throw new import_errors.FordResponseError("charge log: invalid date");
+    }
+    return this.get(`/fccs?startDate=${startDate}&endDate=${endDate}`, "charge log");
+  }
   /** Cancels running requests */
   abort() {
     this.shutdown.abort();

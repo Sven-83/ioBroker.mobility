@@ -126,6 +126,18 @@ describe('easee/sessions', () => {
         expect(report.last()).to.deep.include({ kwh: 24.8, cost: 9.92, minutes: 60 });
     });
 
+    it('sums the last days, today included', () => {
+        const report = new SessionReport(
+            [session(1, NOW - 60 * 60_000, 12), session(2, NOW - 2 * DAY, 8), session(3, NOW - 20 * DAY, 30)],
+            0.5,
+        );
+        const days = report.days(NOW, 3);
+        expect(days).to.have.length(3);
+        expect(days[2]).to.deep.include({ sessions: 1, kwh: 12, cost: 6 });
+        expect(days[0]).to.deep.include({ sessions: 1, kwh: 8 });
+        expect(days[1]).to.deep.include({ sessions: 0, kwh: 0 });
+    });
+
     it('books a session on the local day it started', () => {
         // 31.10. 23:30 UTC = 1.11. 00:30 local (UTC+1)
         const report = new SessionReport([session(1, Date.parse('2026-10-31T23:30:00Z'), 10)], 0);
