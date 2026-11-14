@@ -292,4 +292,20 @@ describe('easee/sessions-sync', () => {
         expect(requests[0].from).to.equal(since);
         expect(requests[0].to).to.equal(Date.parse('2026-10-01T00:00:00+02:00'));
     });
+
+    it('needs no request when an earlier run already went back past a later start date', async () => {
+        const since = Date.parse('2026-10-01T00:00:00+02:00');
+        const stored = JSON.stringify({
+            v: 1,
+            backfilledTo: Date.parse('2025-11-14T09:39:30Z'), // one year loaded before the date was set
+            backfillDone: false,
+            sessions: [session(1, since + DAY, 20)],
+        });
+        const { clock, requests, sync } = setup(() => [], { 1: stored }, since);
+        await sync.start([CHARGERS[0]]);
+        await clock.until(NOW + FIRST_REQUEST_MS + 2 * REQUEST_GAP_MS);
+        expect(requests).to.have.length(1);
+        expect(requests[0].from).to.be.below(requests[0].to);
+        expect(requests[0].to - requests[0].from).to.equal(RECENT_WINDOW_MS);
+    });
 });

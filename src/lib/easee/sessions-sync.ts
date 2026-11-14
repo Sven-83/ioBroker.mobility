@@ -129,6 +129,10 @@ export class EaseeSessions implements SessionControl {
             if (store.backfillDone && store.backfilledTo !== null && store.backfilledTo > this.limit) {
                 store.backfillDone = false;
             }
+            // start date moved forward: what is loaded already reaches back far enough
+            if (!store.backfillDone && store.backfilledTo !== null && store.backfilledTo <= this.limit) {
+                store.backfillDone = true;
+            }
             this.entries.push({ ...c, store, lastSync: null });
         }
         const definitions = historyObjects(EASEE_ROOT, this.pricePerKwh > 0);
@@ -224,6 +228,11 @@ export class EaseeSessions implements SessionControl {
         if (task.kind === 'backfill') {
             to = store.backfilledTo ?? now;
             from = Math.max(to - BACKFILL_WINDOW_MS, this.limit);
+            if (from >= to) {
+                // already loaded back to the start date: never send an empty or reversed window
+                store.backfillDone = true;
+                return;
+            }
         } else {
             to = now;
             from = Math.min(Math.max(now - RECENT_WINDOW_MS, this.limit), now - 3_600_000);

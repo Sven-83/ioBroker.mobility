@@ -79,6 +79,9 @@ class EaseeSessions {
       if (store.backfillDone && store.backfilledTo !== null && store.backfilledTo > this.limit) {
         store.backfillDone = false;
       }
+      if (!store.backfillDone && store.backfilledTo !== null && store.backfilledTo <= this.limit) {
+        store.backfillDone = true;
+      }
       this.entries.push({ ...c, store, lastSync: null });
     }
     const definitions = (0, import_objects.historyObjects)(import_objects.EASEE_ROOT, this.pricePerKwh > 0);
@@ -169,6 +172,10 @@ class EaseeSessions {
     if (task.kind === "backfill") {
       to = (_a = store.backfilledTo) != null ? _a : now;
       from = Math.max(to - BACKFILL_WINDOW_MS, this.limit);
+      if (from >= to) {
+        store.backfillDone = true;
+        return;
+      }
     } else {
       to = now;
       from = Math.min(Math.max(now - RECENT_WINDOW_MS, this.limit), now - 36e5);
