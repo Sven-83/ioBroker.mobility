@@ -54,9 +54,18 @@ Fuel price data: [Tankerkönig](https://creativecommons.tankerkoenig.de), licens
   `streams.easee.com/hubs/products`; polling then only runs every 5 minutes as a check and takes over
   while the stream is down (reconnect 5 s ... 5 min). `easee.streamConnected` shows the stream state.
   15 s after a command the charger is subscribed again, because the stream can go silent after start/stop.
+- **Charging costs:** the charging sessions of the selected chargers are downloaded from Easee, also
+  backwards (in steps of one year until a year without sessions, or only from the date set in
+  "charging sessions from") and stored in the instance files
+  `easee-sessions-N.json`. `easee.chargerN.history.*` and the sum of all chargers in `easee.history.*`:
+  `weeks` (12) and `months` (13) as JSON (`period`, `sessions`, `kwh`, `cost`), `monthEnergy`/`monthCost`,
+  `yearEnergy`/`yearCost`, `lastSession` (JSON), `oldestSession`, `sessionCount`. Cost = Easee's own price if
+  set there, otherwise kWh x the price in the settings; a session counts on the day it was plugged in.
+  Update every 6 h and 2 min after unplugging; at most one sessions request every 6 min (Easee allows
+  about 10 per hour). The running session is not included yet (see `sessionEnergy`/`sessionCost`).
 - A wrong login stops the Easee part with an error message (no retries that could lock the account).
 - **Nothing is ever deleted on the Easee side:** the client only sends requests from a fixed allow list
-  (login, token refresh, charger list, observations, start/stop/pause/resume). No DELETE, no settings,
+  (login, token refresh, charger list, observations, charging sessions, start/stop/pause/resume). No DELETE, no settings,
   sites or users - important for site admin accounts. Easee objects in ioBroker are never deleted either.
 - Tip: use a separate Easee account for ioBroker with shared access to the chargers.
 
@@ -207,6 +216,7 @@ Please refer to the [`dev-server` documentation](https://github.com/ioBroker/dev
   battery flag; empty fuel range for BEV and time until full while unplugged; vehicle ID removed from `raw`
 - (Sven-83) Ford: dashboard warnings per vehicle (`warnings`, `warningLevel`, `warningCount`)
 - (Sven-83) Ford: history per vehicle (km, long trips, consumption, refuels, tyre trend), tank size setting
+- (Sven-83) Easee: charging sessions incl. the past, kWh and costs per week, month and year
 
 ### 0.0.1
 

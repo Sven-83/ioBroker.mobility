@@ -24,11 +24,13 @@ __export(easee_client_exports, {
   HTTP_TIMEOUT_MS: () => HTTP_TIMEOUT_MS,
   SERIAL_PATTERN: () => SERIAL_PATTERN,
   TOKEN_MARGIN_MS: () => TOKEN_MARGIN_MS,
-  isAllowedRequest: () => isAllowedRequest
+  isAllowedRequest: () => isAllowedRequest,
+  isoSeconds: () => isoSeconds
 });
 module.exports = __toCommonJS(easee_client_exports);
 var import_errors = require("./errors");
 var import_observations = require("./observations");
+var import_sessions = require("./sessions");
 var import_http = require("../util/http");
 const BASE_URL = "https://api.easee.com";
 const HTTP_TIMEOUT_MS = 15e3;
@@ -114,6 +116,25 @@ class EaseeClient {
    */
   async command(serial, command) {
     await this.authorized("POST", `/api/chargers/${checkSerial(serial)}/commands/${command}`, command);
+  }
+  /**
+   * Charging sessions of one charger between two times.
+   *
+   * @param serial - Serial number
+   * @param from - Start (epoch ms)
+   * @param to - End (epoch ms)
+   */
+  async getSessions(serial, from, to) {
+    const body = await this.authorized(
+      "GET",
+      `/api/sessions/charger/${checkSerial(serial)}/sessions/${isoSeconds(from)}/${isoSeconds(to)}`,
+      "sessions"
+    );
+    const list = (0, import_sessions.parseSessions)(body != null ? body : []);
+    if (!list) {
+      throw new import_errors.EaseeResponseError("sessions: unexpected answer (no list)");
+    }
+    return list;
   }
   /** Valid access token for the SignalR stream (shares login and refresh with REST) */
   async accessToken() {
@@ -280,6 +301,11 @@ const ALLOWED_REQUESTS = [
   { method: "POST", path: /^\/api\/accounts\/refresh_token$/ },
   { method: "GET", path: /^\/api\/chargers$/ },
   { method: "GET", path: /^\/state\/[A-Z0-9]{6,16}\/observations\?ids=[0-9%C,]+$/ },
+  // charging sessions (read only)
+  {
+    method: "GET",
+    path: /^\/api\/sessions\/charger\/[A-Z0-9]{6,16}\/sessions\/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/
+  },
   {
     method: "POST",
     path: /^\/api\/chargers\/[A-Z0-9]{6,16}\/commands\/(start_charging|stop_charging|pause_charging|resume_charging)$/
@@ -287,6 +313,9 @@ const ALLOWED_REQUESTS = [
 ];
 function isAllowedRequest(method, path) {
   return ALLOWED_REQUESTS.some((rule) => rule.method === method && rule.path.test(path));
+}
+function isoSeconds(t) {
+  return new Date(t).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 function checkSerial(serial) {
   if (!SERIAL_PATTERN.test(serial)) {
@@ -302,6 +331,7 @@ function checkSerial(serial) {
   HTTP_TIMEOUT_MS,
   SERIAL_PATTERN,
   TOKEN_MARGIN_MS,
-  isAllowedRequest
+  isAllowedRequest,
+  isoSeconds
 });
 //# sourceMappingURL=easee-client.js.map

@@ -9,6 +9,7 @@ import { randomBytes } from 'node:crypto';
 import { readEaseeConfig } from './lib/easee/config';
 import { EaseeClient } from './lib/easee/easee-client';
 import { EaseeService } from './lib/easee/easee-service';
+import { EaseeSessions } from './lib/easee/sessions-sync';
 import { EaseeStream, type SocketLike } from './lib/easee/stream';
 import { EASEE_ROOT, parseChargerCommandId } from './lib/easee/objects';
 import { readFordConfig } from './lib/ford/config';
@@ -146,6 +147,32 @@ class Mobility extends utils.Adapter {
                 }),
             );
         }
+        this.easee.attachSessions(
+            new EaseeSessions(
+                config.pricePerKwh,
+                {
+                    getSessions: (serial, from, to) => client.getSessions(serial, from, to),
+                    log: this.log,
+                    now: () => Date.now(),
+                    setTimeout: (callback, ms) => this.setTimeout(callback, ms),
+                    clearTimeout: handle => this.clearTimeout(handle as ioBroker.Timeout | undefined),
+                    ensureObjects: definitions => this.ensureObjects(definitions),
+                    setState: async (id, value) => {
+                        await this.setState(id, value, true);
+                    },
+                    load: async slot => {
+                        try {
+                            const { file } = await this.readFileAsync(this.namespace, `easee-sessions-${slot}.json`);
+                            return file.toString();
+                        } catch {
+                            return undefined; // first start
+                        }
+                    },
+                    save: (slot, text) => this.writeFileAsync(this.namespace, `easee-sessions-${slot}.json`, text),
+                },
+                config.sessionsFrom,
+            ),
+        );
         await this.subscribeStatesAsync(`${EASEE_ROOT}.charger*.charge`);
         await this.subscribeStatesAsync(`${EASEE_ROOT}.charger*.refresh`);
         this.easee.start();

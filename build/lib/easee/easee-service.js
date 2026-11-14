@@ -65,6 +65,7 @@ class EaseeService {
   failureCount = 0;
   stopped = false;
   stream;
+  sessions;
   /** Last written value per state ID (writes only on change) */
   written = /* @__PURE__ */ new Map();
   /**
@@ -74,6 +75,14 @@ class EaseeService {
    */
   attachStream(stream) {
     this.stream = stream;
+  }
+  /**
+   * Adds the charging-session download (optional).
+   *
+   * @param sessions - Session part
+   */
+  attachSessions(sessions) {
+    this.sessions = sessions;
   }
   /**
    * A value pushed by the stream.
@@ -118,7 +127,7 @@ class EaseeService {
   }
   /** Stops timers and running requests */
   stop() {
-    var _a;
+    var _a, _b;
     this.stopped = true;
     for (const handle of this.timers) {
       this.deps.clearTimeout(handle);
@@ -126,6 +135,7 @@ class EaseeService {
     this.timers.clear();
     this.pollTimer = void 0;
     (_a = this.stream) == null ? void 0 : _a.stop();
+    (_b = this.sessions) == null ? void 0 : _b.stop();
     this.deps.client.abort();
   }
   /** Slots of the known chargers (for tests and the adapter) */
@@ -166,7 +176,8 @@ class EaseeService {
       state: void 0,
       lastCommandAt: 0,
       observations: /* @__PURE__ */ new Map(),
-      applyPending: false
+      applyPending: false,
+      carConnected: null
     }));
     const definitions = (0, import_objects.rootObjects)();
     for (const charger of this.chargers) {
@@ -181,6 +192,9 @@ class EaseeService {
       `Easee: using ${this.chargers.map((c) => `charger${c.slot} = "${c.name}"`).join(", ")}${list.length > this.chargers.length ? ` (${list.length - this.chargers.length} other charger(s) ignored)` : ""}`
     );
     (_a = this.stream) == null ? void 0 : _a.start(this.chargers.map((c) => c.serial));
+    if (this.sessions) {
+      await this.sessions.start(this.chargers.map((c) => ({ slot: c.slot, serial: c.serial, name: c.name }))).catch((error) => log.warn(`Easee: charging sessions not available: ${(0, import_errors.describeError)(error)}`));
+    }
     await this.poll();
   }
   /**
@@ -342,6 +356,7 @@ class EaseeService {
    * @param charger - Charger
    */
   async apply(charger) {
+    var _a;
     const st = (0, import_observations.parseChargerState)([...charger.observations.values()]);
     charger.state = st;
     const ch = (0, import_objects.chargerChannel)(charger.slot);
@@ -353,7 +368,14 @@ class EaseeService {
     await set("online", st.online);
     await set("opMode", st.opMode);
     await set("status", st.opMode === null ? null : import_observations.OP_MODE_STATES[st.opMode]);
-    await set("carConnected", (0, import_observations.isCarConnected)(st.opMode));
+    const connected = (0, import_observations.isCarConnected)(st.opMode);
+    await set("carConnected", connected);
+    if (connected !== null) {
+      if (charger.carConnected === true && !connected) {
+        (_a = this.sessions) == null ? void 0 : _a.carUnplugged(charger.slot);
+      }
+      charger.carConnected = connected;
+    }
     await set("charging", st.opMode === null ? null : st.opMode === import_observations.OP_MODE.charging);
     await set("power", st.power);
     await set("sessionEnergy", st.sessionEnergy);

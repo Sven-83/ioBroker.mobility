@@ -21,6 +21,7 @@ __export(objects_exports, {
   EASEE_ROOT: () => EASEE_ROOT,
   chargerChannel: () => chargerChannel,
   chargerObjects: () => chargerObjects,
+  historyObjects: () => historyObjects,
   parseChargerCommandId: () => parseChargerCommandId,
   rootObjects: () => rootObjects
 });
@@ -153,11 +154,49 @@ function chargerObjects(slot, name, withCost) {
   }
   return list;
 }
+function historyObjects(prefix, withCost) {
+  const p = `${prefix}.history`;
+  const json = { type: "string", role: "json" };
+  const kwh = { type: "number", role: "value.energy", unit: "kWh" };
+  const eur = { type: "number", role: "value", unit: "\u20AC" };
+  const list = [
+    {
+      id: p,
+      obj: { type: "channel", common: { name: n("Charging sessions", "Ladevorg\xE4nge") }, native: {} }
+    },
+    state(`${p}.weeks`, n("Last 12 weeks (JSON)", "Letzte 12 Wochen (JSON)"), json),
+    state(`${p}.months`, n("Last 13 months (JSON)", "Letzte 13 Monate (JSON)"), json),
+    state(`${p}.monthEnergy`, n("Charged this month", "Geladen diesen Monat"), kwh),
+    state(`${p}.yearEnergy`, n("Charged this year", "Geladen dieses Jahr"), kwh),
+    state(`${p}.lastSession`, n("Last session (JSON)", "Letzte Ladung (JSON)"), json),
+    state(`${p}.oldestSession`, n("First known session", "Erste bekannte Ladung"), {
+      type: "number",
+      role: "value.time"
+    }),
+    state(`${p}.sessionCount`, n("Known sessions", "Bekannte Ladevorg\xE4nge"), { type: "number", role: "value" })
+  ];
+  if (prefix !== EASEE_ROOT) {
+    list.push(
+      state(`${p}.lastSync`, n("Sessions read from Easee", "Ladevorg\xE4nge von Easee gelesen"), {
+        type: "number",
+        role: "value.time"
+      })
+    );
+  }
+  if (withCost) {
+    list.push(
+      state(`${p}.monthCost`, n("Charging cost this month", "Ladekosten diesen Monat"), eur),
+      state(`${p}.yearCost`, n("Charging cost this year", "Ladekosten dieses Jahr"), eur)
+    );
+  }
+  return list;
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   EASEE_ROOT,
   chargerChannel,
   chargerObjects,
+  historyObjects,
   parseChargerCommandId,
   rootObjects
 });

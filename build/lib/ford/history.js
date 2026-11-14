@@ -26,11 +26,12 @@ __export(history_exports, {
   SAMPLE_DAYS: () => SAMPLE_DAYS,
   TYRE_TREND_MIN_DAYS: () => TYRE_TREND_MIN_DAYS,
   VehicleHistory: () => VehicleHistory,
-  dayKey: () => dayKey,
+  dayKey: () => import_periods.dayKey,
   normaliseTyre: () => normaliseTyre,
-  weekKey: () => weekKey
+  weekKey: () => import_periods.weekKey
 });
 module.exports = __toCommonJS(history_exports);
+var import_periods = require("../util/periods");
 const LONG_TRIP_KM = 50;
 const SAMPLE_DAYS = 8;
 const DAY_RECORDS = 400;
@@ -40,19 +41,6 @@ const CHARGE_KWH = 0.3;
 const TYRE_TREND_MIN_DAYS = 3;
 const DAY = 864e5;
 const VERSION = 1;
-function dayKey(t) {
-  const d = new Date(t);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-function weekKey(d) {
-  const [y, m, day] = d.split("-").map(Number);
-  const date = new Date(Date.UTC(y, m - 1, day));
-  const weekday = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - weekday);
-  const yearStart = Date.UTC(date.getUTCFullYear(), 0, 1);
-  const week = Math.ceil(((date.getTime() - yearStart) / DAY + 1) / 7);
-  return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
-}
 function normaliseTyre(kpa, tempC) {
   return (kpa + 101.3) * (293.15 / (tempC + 273.15)) - 101.3;
 }
@@ -120,7 +108,7 @@ class VehicleHistory {
     if (prev && s.t <= prev.t) {
       return;
     }
-    const day = this.day(dayKey(s.t));
+    const day = this.day((0, import_periods.dayKey)(s.t));
     if (s.temp !== null) {
       day.tempSum += s.temp;
       day.tempN++;
@@ -191,14 +179,7 @@ class VehicleHistory {
    * @param tankLitres - Tank size (0 = unknown)
    */
   weeks(now, count, tankLitres) {
-    const keys = [];
-    for (let i = count - 1; i >= 0; i--) {
-      const key = weekKey(dayKey(now - i * 7 * DAY));
-      if (!keys.includes(key)) {
-        keys.push(key);
-      }
-    }
-    return keys.map((key) => this.summary(key, (d) => weekKey(d) === key, tankLitres));
+    return (0, import_periods.lastWeekKeys)(now, count).map((key) => this.summary(key, (d) => (0, import_periods.weekKey)(d) === key, tankLitres));
   }
   /**
    * Last months (oldest first, current month included).
@@ -208,13 +189,7 @@ class VehicleHistory {
    * @param tankLitres - Tank size (0 = unknown)
    */
   months(now, count, tankLitres) {
-    const date = new Date(now);
-    const keys = [];
-    for (let i = count - 1; i >= 0; i--) {
-      const m = new Date(date.getFullYear(), date.getMonth() - i, 1);
-      keys.push(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, "0")}`);
-    }
-    return keys.map((key) => this.summary(key, (d) => d.startsWith(key), tankLitres));
+    return (0, import_periods.lastMonthKeys)(now, count).map((key) => this.summary(key, (d) => d.startsWith(key), tankLitres));
   }
   /**
    * Fuel consumption from the last refuels in l/100 km (needs tank size and odometer), null if unknown.

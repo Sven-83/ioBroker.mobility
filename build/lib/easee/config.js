@@ -23,6 +23,7 @@ __export(config_exports, {
   DEFAULT_PRICE_PER_KWH: () => DEFAULT_PRICE_PER_KWH,
   MAX_INTERVAL_SEC: () => MAX_INTERVAL_SEC,
   MIN_INTERVAL_SEC: () => MIN_INTERVAL_SEC,
+  parseLocalDate: () => parseLocalDate,
   readEaseeConfig: () => readEaseeConfig
 });
 module.exports = __toCommonJS(config_exports);
@@ -52,6 +53,10 @@ function readEaseeConfig(native) {
   if (wanted && /^0?\d{6,}$/.test(userName.replace(/[\s/-]/g, ""))) {
     problems.push("the user name looks like a phone number without country code - use e.g. +49...");
   }
+  const sessionsFrom = parseLocalDate(native.easeeSessionsFrom);
+  if (sessionsFrom === void 0) {
+    problems.push('"charging sessions from" must be a date like 2026-06-01 - all sessions are used');
+  }
   const raw = [native.easeeCharger1, native.easeeCharger2];
   const chargerNames = [];
   for (let i = 0; i < CHARGER_SLOTS; i++) {
@@ -71,10 +76,25 @@ function readEaseeConfig(native) {
       intervalSec,
       pricePerKwh: Math.round(pricePerKwh * 1e4) / 1e4,
       stream: native.easeeStream !== false,
+      sessionsFrom: sessionsFrom != null ? sessionsFrom : null,
       chargerNames
     },
     problems
   };
+}
+function parseLocalDate(value) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (text === "") {
+    return null;
+  }
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
+  const de = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(text);
+  const [y, m, d] = iso ? [Number(iso[1]), Number(iso[2]), Number(iso[3])] : de ? [Number(de[3]), Number(de[2]), Number(de[1])] : [NaN, NaN, NaN];
+  const date = new Date(y, m - 1, d);
+  if (!Number.isFinite(date.getTime()) || date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
+    return void 0;
+  }
+  return date.getTime();
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
@@ -83,6 +103,7 @@ function readEaseeConfig(native) {
   DEFAULT_PRICE_PER_KWH,
   MAX_INTERVAL_SEC,
   MIN_INTERVAL_SEC,
+  parseLocalDate,
   readEaseeConfig
 });
 //# sourceMappingURL=config.js.map

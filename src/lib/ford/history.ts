@@ -12,6 +12,10 @@
  * close together can merge - good enough for a weekly share).
  */
 
+import { dayKey, lastMonthKeys, lastWeekKeys, weekKey } from '../util/periods';
+
+export { dayKey, weekKey };
+
 /** Wheels as used in VehicleState.tires */
 export type Tyres = Record<string, number>;
 
@@ -95,31 +99,6 @@ export const CHARGE_KWH = 0.3;
 export const TYRE_TREND_MIN_DAYS = 3;
 const DAY = 86_400_000;
 const VERSION = 1;
-
-/**
- * Local date key.
- *
- * @param t - Epoch ms
- */
-export function dayKey(t: number): string {
-    const d = new Date(t);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-/**
- * ISO week key of a local date key, e.g. "2026-W46".
- *
- * @param d - YYYY-MM-DD
- */
-export function weekKey(d: string): string {
-    const [y, m, day] = d.split('-').map(Number);
-    const date = new Date(Date.UTC(y, m - 1, day));
-    const weekday = date.getUTCDay() || 7;
-    date.setUTCDate(date.getUTCDate() + 4 - weekday);
-    const yearStart = Date.UTC(date.getUTCFullYear(), 0, 1);
-    const week = Math.ceil(((date.getTime() - yearStart) / DAY + 1) / 7);
-    return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
-}
 
 /**
  * Tyre pressure (gauge, kPa) converted to 20 °C, so a cold night is not taken for a leak.
@@ -291,14 +270,7 @@ export class VehicleHistory {
      * @param tankLitres - Tank size (0 = unknown)
      */
     public weeks(now: number, count: number, tankLitres: number): PeriodSummary[] {
-        const keys: string[] = [];
-        for (let i = count - 1; i >= 0; i--) {
-            const key = weekKey(dayKey(now - i * 7 * DAY));
-            if (!keys.includes(key)) {
-                keys.push(key);
-            }
-        }
-        return keys.map(key => this.summary(key, d => weekKey(d) === key, tankLitres));
+        return lastWeekKeys(now, count).map(key => this.summary(key, d => weekKey(d) === key, tankLitres));
     }
 
     /**
@@ -309,13 +281,7 @@ export class VehicleHistory {
      * @param tankLitres - Tank size (0 = unknown)
      */
     public months(now: number, count: number, tankLitres: number): PeriodSummary[] {
-        const date = new Date(now);
-        const keys: string[] = [];
-        for (let i = count - 1; i >= 0; i--) {
-            const m = new Date(date.getFullYear(), date.getMonth() - i, 1);
-            keys.push(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`);
-        }
-        return keys.map(key => this.summary(key, d => d.startsWith(key), tankLitres));
+        return lastMonthKeys(now, count).map(key => this.summary(key, d => d.startsWith(key), tankLitres));
     }
 
     /**

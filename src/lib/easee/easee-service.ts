@@ -25,6 +25,7 @@ import type { EaseeConfig } from './config';
 import type { ChargeCommand, ChargerInfo } from './easee-client';
 import { EaseeAbortedError, EaseeAuthError, EaseeRateLimitedError } from './errors';
 import { EASEE_ROOT, chargerChannel, chargerObjects, rootObjects } from './objects';
+import type { SessionControl } from './sessions-sync';
 import {
     OP_MODE,
     OP_MODE_STATES,
@@ -114,6 +115,8 @@ interface Charger {
     observations: Map<number, RawObservation>;
     /** Write of pushed values is scheduled */
     applyPending: boolean;
+    /** Car plugged in at the last write (null = unknown yet) */
+    carConnected: boolean | null;
 }
 
 /**
@@ -129,6 +132,7 @@ export class EaseeService {
     private failureCount = 0;
     private stopped = false;
     private stream: StreamControl | undefined;
+    private sessions: SessionControl | undefined;
     /** Last written value per state ID (writes only on change) */
     private readonly written = new Map<string, ioBroker.StateValue>();
 
@@ -148,6 +152,15 @@ export class EaseeService {
      */
     public attachStream(stream: StreamControl): void {
         this.stream = stream;
+    }
+
+    /**
+     * Adds the charging-session download (optional).
+     *
+     * @param sessions - Session part
+     */
+    public attachSessions(sessions: SessionControl): void {
+        this.sessions = sessions;
     }
 
     /**
@@ -204,6 +217,7 @@ export class EaseeService {
         this.timers.clear();
         this.pollTimer = undefined;
         this.stream?.stop();
+        this.sessions?.stop();
         this.deps.client.abort();
     }
 
@@ -247,6 +261,7 @@ export class EaseeService {
             lastCommandAt: 0,
             observations: new Map<number, RawObservation>(),
             applyPending: false,
+            carConnected: null,
         }));
         const definitions = rootObjects();
         for (const charger of this.chargers) {
@@ -265,6 +280,11 @@ export class EaseeService {
             }`,
         );
         this.stream?.start(this.chargers.map(c => c.serial));
+        if (this.sessions) {
+            await this.sessions
+                .start(this.chargers.map(c => ({ slot: c.slot, serial: c.serial, name: c.name })))
+                .catch(error => log.warn(`Easee: charging sessions not available: ${describeError(error)}`));
+        }
         await this.poll();
     }
 
@@ -452,7 +472,14 @@ export class EaseeService {
         await set('online', st.online);
         await set('opMode', st.opMode);
         await set('status', st.opMode === null ? null : OP_MODE_STATES[st.opMode]);
-        await set('carConnected', isCarConnected(st.opMode));
+        const connected = isCarConnected(st.opMode);
+        await set('carConnected', connected);
+        if (connected !== null) {
+            if (charger.carConnected === true && !connected) {
+                this.sessions?.carUnplugged(charger.slot); // Easee closes the session now
+            }
+            charger.carConnected = connected;
+        }
         await set('charging', st.opMode === null ? null : st.opMode === OP_MODE.charging);
         await set('power', st.power);
         await set('sessionEnergy', st.sessionEnergy);

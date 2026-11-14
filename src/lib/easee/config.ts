@@ -27,6 +27,8 @@ export interface EaseeConfig {
     pricePerKwh: number;
     /** Use the SignalR real-time stream */
     stream: boolean;
+    /** Charging sessions from this local date on (epoch ms of local midnight), null = all */
+    sessionsFrom: number | null;
     /**
      * Chargers to use, by name as shown in the Easee app (slot = index + 1, empty = slot unused).
      * An account can see many chargers (e.g. a site admin sees the whole car park); only these
@@ -49,6 +51,8 @@ export interface EaseeNative {
     easeePrice?: unknown;
     /** Real-time stream on/off */
     easeeStream?: unknown;
+    /** Charging sessions from (YYYY-MM-DD, empty = all) */
+    easeeSessionsFrom?: unknown;
     /** Name of charger 1 in the Easee app */
     easeeCharger1?: unknown;
     /** Name of charger 2 in the Easee app */
@@ -86,6 +90,11 @@ export function readEaseeConfig(native: EaseeNative): { config: EaseeConfig; pro
         problems.push('the user name looks like a phone number without country code - use e.g. +49...');
     }
 
+    const sessionsFrom = parseLocalDate(native.easeeSessionsFrom);
+    if (sessionsFrom === undefined) {
+        problems.push('"charging sessions from" must be a date like 2026-06-01 - all sessions are used');
+    }
+
     const raw = [native.easeeCharger1, native.easeeCharger2];
     const chargerNames: string[] = [];
     for (let i = 0; i < CHARGER_SLOTS; i++) {
@@ -105,8 +114,39 @@ export function readEaseeConfig(native: EaseeNative): { config: EaseeConfig; pro
             intervalSec,
             pricePerKwh: Math.round(pricePerKwh * 10_000) / 10_000,
             stream: native.easeeStream !== false,
+            sessionsFrom: sessionsFrom ?? null,
             chargerNames,
         },
         problems,
     };
+}
+
+/**
+ * Local midnight of a date "YYYY-MM-DD" (also "DD.MM.YYYY").
+ *
+ * @param value - Text from the settings
+ * @returns Epoch ms, null for empty, undefined for invalid
+ */
+export function parseLocalDate(value: unknown): number | null | undefined {
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (text === '') {
+        return null;
+    }
+    const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
+    const de = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(text);
+    const [y, m, d] = iso
+        ? [Number(iso[1]), Number(iso[2]), Number(iso[3])]
+        : de
+          ? [Number(de[3]), Number(de[2]), Number(de[1])]
+          : [NaN, NaN, NaN];
+    const date = new Date(y, m - 1, d);
+    if (
+        !Number.isFinite(date.getTime()) ||
+        date.getFullYear() !== y ||
+        date.getMonth() !== m - 1 ||
+        date.getDate() !== d
+    ) {
+        return undefined;
+    }
+    return date.getTime();
 }

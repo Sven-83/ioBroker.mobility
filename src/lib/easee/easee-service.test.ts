@@ -23,6 +23,7 @@ const CONFIG: EaseeConfig = {
     intervalSec: 60,
     pricePerKwh: 0.4,
     stream: false,
+    sessionsFrom: null,
     chargerNames: [],
 };
 const A = 'EH000000';
@@ -156,6 +157,29 @@ function setup(config: EaseeConfig = CONFIG) {
 }
 
 describe('easee/service', () => {
+    it('hands the chargers to the session part and reports an unplugged car', async () => {
+        const t = setup();
+        const started: number[][] = [];
+        const unplugged: number[] = [];
+        t.service.attachSessions({
+            start: chargers => {
+                started.push(chargers.map(c => c.slot));
+                return Promise.resolve();
+            },
+            carUnplugged: slot => unplugged.push(slot),
+            stop: () => undefined,
+        });
+        t.service.start();
+        await t.clock.next();
+        expect(started).to.deep.equal([[1, 2]]);
+        expect(unplugged).to.deep.equal([]); // charger 2 was never plugged in
+        t.api.observations.set(A, obs(OP_MODE.disconnected));
+        await t.service.poll();
+        expect(unplugged).to.deep.equal([1]);
+        await t.service.poll();
+        expect(unplugged).to.deep.equal([1]);
+    });
+
     it('finds the chargers, creates slots and writes the values', async () => {
         const t = setup();
         t.service.start();

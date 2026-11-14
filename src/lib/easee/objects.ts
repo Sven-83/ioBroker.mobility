@@ -13,7 +13,11 @@
  *    ├─ cableLocked, smartCharging, authorizationRequired, enabled
  *    ├─ reasonForNoCurrent / reasonText, errorCode, lastUpdate
  *    ├─ charge                 switch   write true = start/resume, false = stop/pause
- *    └─ refresh                button   read the values now
+ *    ├─ refresh                button   read the values now
+ *    └─ history                channel  charging sessions (see sessions.ts / sessions-sync.ts)
+ * easee.history                channel  the same summed over all chargers
+ *    weeks / months (JSON), monthEnergy / yearEnergy (kWh), monthCost / yearCost (EUR),
+ *    lastSession (JSON), oldestSession, sessionCount, lastSync (charger only)
  *
  * Serial numbers are not part of object IDs or states (data minimisation); the slot is enough.
  */
@@ -182,6 +186,50 @@ export function chargerObjects(slot: number, name: string, withCost: boolean): O
                 role: 'value',
                 unit: '€',
             }),
+        );
+    }
+    return list;
+}
+
+/**
+ * Charging-session states below easee.history or easee.chargerN.history.
+ *
+ * @param prefix - easee or easee.chargerN
+ * @param withCost - Create the cost states (price configured)
+ */
+export function historyObjects(prefix: string, withCost: boolean): ObjectDefinition[] {
+    const p = `${prefix}.history`;
+    const json = { type: 'string', role: 'json' } as const;
+    const kwh = { type: 'number', role: 'value.energy', unit: 'kWh' } as const;
+    const eur = { type: 'number', role: 'value', unit: '€' } as const;
+    const list: ObjectDefinition[] = [
+        {
+            id: p,
+            obj: { type: 'channel', common: { name: n('Charging sessions', 'Ladevorgänge') }, native: {} },
+        },
+        state(`${p}.weeks`, n('Last 12 weeks (JSON)', 'Letzte 12 Wochen (JSON)'), json),
+        state(`${p}.months`, n('Last 13 months (JSON)', 'Letzte 13 Monate (JSON)'), json),
+        state(`${p}.monthEnergy`, n('Charged this month', 'Geladen diesen Monat'), kwh),
+        state(`${p}.yearEnergy`, n('Charged this year', 'Geladen dieses Jahr'), kwh),
+        state(`${p}.lastSession`, n('Last session (JSON)', 'Letzte Ladung (JSON)'), json),
+        state(`${p}.oldestSession`, n('First known session', 'Erste bekannte Ladung'), {
+            type: 'number',
+            role: 'value.time',
+        }),
+        state(`${p}.sessionCount`, n('Known sessions', 'Bekannte Ladevorgänge'), { type: 'number', role: 'value' }),
+    ];
+    if (prefix !== EASEE_ROOT) {
+        list.push(
+            state(`${p}.lastSync`, n('Sessions read from Easee', 'Ladevorgänge von Easee gelesen'), {
+                type: 'number',
+                role: 'value.time',
+            }),
+        );
+    }
+    if (withCost) {
+        list.push(
+            state(`${p}.monthCost`, n('Charging cost this month', 'Ladekosten diesen Monat'), eur),
+            state(`${p}.yearCost`, n('Charging cost this year', 'Ladekosten dieses Jahr'), eur),
         );
     }
     return list;

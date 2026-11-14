@@ -245,6 +245,15 @@ describe('easee/client', () => {
         expect(isAllowedRequest('POST', `/api/chargers/${SERIAL}/commands/reboot`)).to.equal(false);
         expect(isAllowedRequest('PUT', '/api/chargers')).to.equal(false);
         expect(isAllowedRequest('GET', '/api/chargers/../sites')).to.equal(false);
+        expect(
+            isAllowedRequest(
+                'GET',
+                `/api/sessions/charger/${SERIAL}/sessions/2025-11-14T08:00:00Z/2026-11-14T08:00:00Z`,
+            ),
+        ).to.equal(true);
+        expect(isAllowedRequest('GET', `/api/sessions/charger/${SERIAL}/sessions/x/y`)).to.equal(false);
+        expect(isAllowedRequest('DELETE', `/api/sessions/charger/${SERIAL}/sessions/x/y`)).to.equal(false);
+        expect(isAllowedRequest('GET', `/api/chargers/${SERIAL}/sessions/latest`)).to.equal(false);
     });
 
     it('rejects invalid serials before any request', async () => {

@@ -89,6 +89,7 @@
         "easeeInterval": 60,
         "easeePrice": 0.35,
         "easeeStream": true,
+        "easeeSessionsFrom": "",
         "easeeCharger1": "",
         "easeeCharger2": "",
         "fordEnabled": false,

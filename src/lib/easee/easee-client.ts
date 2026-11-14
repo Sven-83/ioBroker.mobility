@@ -6,6 +6,7 @@
  *  - GET  /api/chargers                         chargers of the account
  *  - GET  /state/{serial}/observations?ids=...  current values, 100 requests / 5 min
  *  - POST /api/chargers/{serial}/commands/{start|stop|pause|resume}_charging
+ *  - GET  /api/sessions/charger/{serial}/sessions/{from}/{to}   charging sessions (ISO times, UTC)
  * The old GET /api/chargers/{id}/state is gone since 2026-09-01 and is not used.
  *
  * Password and tokens live only in memory; no message contains them, the serial or a URL.
@@ -19,6 +20,7 @@ import {
     EaseeResponseError,
 } from './errors';
 import { OBSERVATION_IDS, type RawObservation } from './observations';
+import { parseSessions, type ChargeSession } from './sessions';
 import { networkReason, parseRetryAfter } from '../util/http';
 
 export type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
@@ -153,6 +155,26 @@ export class EaseeClient {
      */
     public async command(serial: string, command: ChargeCommand): Promise<void> {
         await this.authorized('POST', `/api/chargers/${checkSerial(serial)}/commands/${command}`, command);
+    }
+
+    /**
+     * Charging sessions of one charger between two times.
+     *
+     * @param serial - Serial number
+     * @param from - Start (epoch ms)
+     * @param to - End (epoch ms)
+     */
+    public async getSessions(serial: string, from: number, to: number): Promise<ChargeSession[]> {
+        const body = await this.authorized(
+            'GET',
+            `/api/sessions/charger/${checkSerial(serial)}/sessions/${isoSeconds(from)}/${isoSeconds(to)}`,
+            'sessions',
+        );
+        const list = parseSessions(body ?? []);
+        if (!list) {
+            throw new EaseeResponseError('sessions: unexpected answer (no list)');
+        }
+        return list;
     }
 
     /** Valid access token for the SignalR stream (shares login and refresh with REST) */
@@ -342,6 +364,11 @@ const ALLOWED_REQUESTS: readonly { method: 'GET' | 'POST'; path: RegExp }[] = [
     { method: 'POST', path: /^\/api\/accounts\/refresh_token$/ },
     { method: 'GET', path: /^\/api\/chargers$/ },
     { method: 'GET', path: /^\/state\/[A-Z0-9]{6,16}\/observations\?ids=[0-9%C,]+$/ },
+    // charging sessions (read only)
+    {
+        method: 'GET',
+        path: /^\/api\/sessions\/charger\/[A-Z0-9]{6,16}\/sessions\/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
+    },
     {
         method: 'POST',
         path: /^\/api\/chargers\/[A-Z0-9]{6,16}\/commands\/(start_charging|stop_charging|pause_charging|resume_charging)$/,
@@ -354,6 +381,15 @@ const ALLOWED_REQUESTS: readonly { method: 'GET' | 'POST'; path: RegExp }[] = [
  */
 export function isAllowedRequest(method: string, path: string): boolean {
     return ALLOWED_REQUESTS.some(rule => rule.method === method && rule.path.test(path));
+}
+
+/**
+ * ISO time in UTC without milliseconds, e.g. 2026-11-14T08:00:00Z.
+ *
+ * @param t - Epoch ms
+ */
+export function isoSeconds(t: number): string {
+    return new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 /**

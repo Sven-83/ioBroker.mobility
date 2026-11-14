@@ -53,5 +53,7 @@
     "ford_login_text": "Login (once per vehicle, about once a year): after saving, open ford.vehicleN.login.url in the browser, log in with the FordPass account and pick the vehicle. The browser then shows an error page - copy its whole address into ford.vehicleN.login.response.",
     "Vehicle 1: tank size (litres)": "Vehicle 1: tank size (litres)",
     "Vehicle 2: tank size (litres)": "Vehicle 2: tank size (litres)",
-    "0 = electric / unknown; used for litres and consumption": "0 = electric / unknown; used for litres and consumption"
+    "0 = electric / unknown; used for litres and consumption": "0 = electric / unknown; used for litres and consumption",
+    "Charging sessions from": "Charging sessions from",
+    "Date like 2026-06-01; older sessions are not loaded. Empty = all": "Date like 2026-06-01; older sessions are not loaded. Empty = all"
 }

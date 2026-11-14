@@ -26,6 +26,7 @@ var import_node_crypto = require("node:crypto");
 var import_config = require("./lib/easee/config");
 var import_easee_client = require("./lib/easee/easee-client");
 var import_easee_service = require("./lib/easee/easee-service");
+var import_sessions_sync = require("./lib/easee/sessions-sync");
 var import_stream = require("./lib/easee/stream");
 var import_objects = require("./lib/easee/objects");
 var import_config2 = require("./lib/ford/config");
@@ -152,6 +153,32 @@ class Mobility extends utils.Adapter {
         })
       );
     }
+    this.easee.attachSessions(
+      new import_sessions_sync.EaseeSessions(
+        config.pricePerKwh,
+        {
+          getSessions: (serial, from, to) => client.getSessions(serial, from, to),
+          log: this.log,
+          now: () => Date.now(),
+          setTimeout: (callback, ms) => this.setTimeout(callback, ms),
+          clearTimeout: (handle) => this.clearTimeout(handle),
+          ensureObjects: (definitions) => this.ensureObjects(definitions),
+          setState: async (id, value) => {
+            await this.setState(id, value, true);
+          },
+          load: async (slot) => {
+            try {
+              const { file } = await this.readFileAsync(this.namespace, `easee-sessions-${slot}.json`);
+              return file.toString();
+            } catch {
+              return void 0;
+            }
+          },
+          save: (slot, text) => this.writeFileAsync(this.namespace, `easee-sessions-${slot}.json`, text)
+        },
+        config.sessionsFrom
+      )
+    );
     await this.subscribeStatesAsync(`${import_objects.EASEE_ROOT}.charger*.charge`);
     await this.subscribeStatesAsync(`${import_objects.EASEE_ROOT}.charger*.refresh`);
     this.easee.start();
