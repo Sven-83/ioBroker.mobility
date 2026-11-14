@@ -18,7 +18,9 @@ var __copyProps = (to, from, except, desc) => {
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var charge_logs_exports = {};
 __export(charge_logs_exports, {
+  CHARGE_LOG_HOUR: () => CHARGE_LOG_HOUR,
   MAX_LOG_CHARS: () => MAX_LOG_CHARS,
+  chargeLogDue: () => chargeLogDue,
   countEntries: () => countEntries,
   isoDay: () => isoDay,
   sanitizeChargeLogs: () => sanitizeChargeLogs
@@ -61,9 +63,18 @@ function isoDay(t) {
   const d = new Date(t);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+const CHARGE_LOG_HOUR = 4;
+function chargeLogDue(lastAt, now) {
+  const d = new Date(now);
+  const slot = new Date(d.getFullYear(), d.getMonth(), d.getDate(), CHARGE_LOG_HOUR).getTime();
+  const latest = now >= slot ? slot : new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1, CHARGE_LOG_HOUR).getTime();
+  return lastAt < latest;
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  CHARGE_LOG_HOUR,
   MAX_LOG_CHARS,
+  chargeLogDue,
   countEntries,
   isoDay,
   sanitizeChargeLogs

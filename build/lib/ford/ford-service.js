@@ -19,7 +19,6 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var ford_service_exports = {};
 __export(ford_service_exports, {
   CHARGE_LOG_DAYS: () => CHARGE_LOG_DAYS,
-  CHARGE_LOG_EVERY_MS: () => CHARGE_LOG_EVERY_MS,
   EXPIRY_WARNING_MS: () => EXPIRY_WARNING_MS,
   FordService: () => FordService,
   GARAGE_MAX_AGE_MS: () => GARAGE_MAX_AGE_MS,
@@ -39,7 +38,6 @@ var import_history = require("./history");
 const MAX_BACKOFF_MS = 60 * 6e4;
 const EXPIRY_WARNING_MS = 7 * 24 * 36e5;
 const GARAGE_MAX_AGE_MS = 24 * 36e5;
-const CHARGE_LOG_EVERY_MS = 24 * 36e5;
 const CHARGE_LOG_DAYS = 30;
 class FordService {
   /**
@@ -61,7 +59,7 @@ class FordService {
       expiryWarned: false,
       weak12v: void 0,
       unlockedSince: null,
-      chargeLogsAt: null,
+      chargeLogsAt: this.deps.now(),
       history: new import_history.VehicleHistory()
     }));
   }
@@ -72,6 +70,7 @@ class FordService {
   async start() {
     const definitions = (0, import_objects.rootObjects)();
     for (const v of this.vehicles) {
+      v.chargeLogsAt = this.deps.now();
       definitions.push(...(0, import_objects.vehicleObjects)(v.config.slot, v.config.name));
     }
     await this.deps.ensureObjects(definitions);
@@ -238,14 +237,14 @@ class FordService {
     this.schedulePoll(v, nextDelay + Math.floor(this.deps.random() * 3e4));
   }
   /**
-   * Reads the charge log once a day (test stage). Never affects the normal poll: errors only end up in
+   * Reads the charge log once a day after 4 o'clock, never right after a start (test stage). Never affects the normal poll: errors only end up in
    * chargeLogsStatus and as one info line in the log.
    *
    * @param v - Vehicle
    */
   async readChargeLogs(v) {
     const now = this.deps.now();
-    if (!v.client.getChargeLogs || v.chargeLogsAt !== null && now - v.chargeLogsAt < CHARGE_LOG_EVERY_MS) {
+    if (!v.client.getChargeLogs || !(0, import_charge_logs.chargeLogDue)(v.chargeLogsAt, now)) {
       return;
     }
     v.chargeLogsAt = now;
@@ -458,7 +457,6 @@ function sharedAccessHint(code) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   CHARGE_LOG_DAYS,
-  CHARGE_LOG_EVERY_MS,
   EXPIRY_WARNING_MS,
   FordService,
   GARAGE_MAX_AGE_MS,

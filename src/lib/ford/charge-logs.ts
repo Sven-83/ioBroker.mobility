@@ -65,3 +65,21 @@ export function isoDay(t: number): string {
     const d = new Date(t);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+
+/** Local hour of the daily read: night, far from restarts during the day */
+export const CHARGE_LOG_HOUR = 4;
+
+/**
+ * True once per day: at the first poll after CHARGE_LOG_HOUR that comes after the last read (or the start).
+ * Never right after a restart, so restarts do not keep a rate limit of Ford alive.
+ *
+ * @param lastAt - Last read or start of the service (epoch ms)
+ * @param now - Current time (epoch ms)
+ */
+export function chargeLogDue(lastAt: number, now: number): boolean {
+    const d = new Date(now);
+    const slot = new Date(d.getFullYear(), d.getMonth(), d.getDate(), CHARGE_LOG_HOUR).getTime();
+    const latest =
+        now >= slot ? slot : new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1, CHARGE_LOG_HOUR).getTime();
+    return lastAt < latest;
+}

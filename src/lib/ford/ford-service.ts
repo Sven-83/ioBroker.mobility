@@ -14,7 +14,7 @@
  * A rejected refresh token -> new login needed (status + log), polling of that vehicle pauses.
  */
 
-import { MAX_LOG_CHARS, countEntries, isoDay, sanitizeChargeLogs } from './charge-logs';
+import { MAX_LOG_CHARS, chargeLogDue, countEntries, isoDay, sanitizeChargeLogs } from './charge-logs';
 import { describeError } from '../fuel/errors';
 import type { Logger, TimerHandle } from '../fuel/fuel-service';
 import type { ObjectDefinition } from '../fuel/objects';
@@ -40,8 +40,7 @@ export const EXPIRY_WARNING_MS = 7 * 24 * 3_600_000;
 /** Garage info is read again after this time */
 export const GARAGE_MAX_AGE_MS = 24 * 3_600_000;
 
-/** Charge log: once a day, the last 30 days */
-export const CHARGE_LOG_EVERY_MS = 24 * 3_600_000;
+/** Charge log: the last 30 days, once a day (see chargeLogDue) */
 export const CHARGE_LOG_DAYS = 30;
 
 /** The part of the Ford client the service needs */
@@ -106,8 +105,8 @@ interface Vehicle {
     expiryWarned: boolean;
     /** Last 12 V verdict (for logging changes only), undefined = not known yet */
     weak12v: boolean | undefined;
-    /** Last read of the charge log (epoch ms), null = not yet */
-    chargeLogsAt: number | null;
+    /** Last read of the charge log, at first the start of the service (epoch ms) */
+    chargeLogsAt: number;
     /** Since when the vehicle is unlocked (epoch ms), null if locked or unknown */
     unlockedSince: number | null;
     /** Trips, consumption, tyre trend */
@@ -142,7 +141,7 @@ export class FordService {
             expiryWarned: false,
             weak12v: undefined,
             unlockedSince: null,
-            chargeLogsAt: null,
+            chargeLogsAt: this.deps.now(),
             history: new VehicleHistory(),
         }));
     }
@@ -151,6 +150,8 @@ export class FordService {
     public async start(): Promise<void> {
         const definitions = rootObjects();
         for (const v of this.vehicles) {
+            // the charge log waits for the next morning after a start
+            v.chargeLogsAt = this.deps.now();
             definitions.push(...vehicleObjects(v.config.slot, v.config.name));
         }
         await this.deps.ensureObjects(definitions);
@@ -324,14 +325,14 @@ export class FordService {
     }
 
     /**
-     * Reads the charge log once a day (test stage). Never affects the normal poll: errors only end up in
+     * Reads the charge log once a day after 4 o'clock, never right after a start (test stage). Never affects the normal poll: errors only end up in
      * chargeLogsStatus and as one info line in the log.
      *
      * @param v - Vehicle
      */
     private async readChargeLogs(v: Vehicle): Promise<void> {
         const now = this.deps.now();
-        if (!v.client.getChargeLogs || (v.chargeLogsAt !== null && now - v.chargeLogsAt < CHARGE_LOG_EVERY_MS)) {
+        if (!v.client.getChargeLogs || !chargeLogDue(v.chargeLogsAt, now)) {
             return;
         }
         v.chargeLogsAt = now;
