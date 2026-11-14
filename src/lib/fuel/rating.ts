@@ -40,6 +40,38 @@ export interface PriceEvaluation {
     bestWeekday: number | null;
     /** Average price on that weekday */
     bestWeekdayPrice: number | null;
+    /** Average price per hour of day (index 0-23), null for hours with less than 30 min data */
+    hourProfile: (number | null)[];
+}
+
+/** Buckets (hour, weekday) with less data than this are left out */
+const MIN_BUCKET_MS = 30 * 60_000;
+
+/**
+ * Change points for a chart of the 7-day window: the price valid at the window start is moved to the
+ * start, later points stay as they are. Null = no price (closed).
+ *
+ * @param points - Change points (oldest first)
+ * @param now - Current time (epoch ms)
+ */
+export function chartPoints(points: readonly PricePoint[], now: number): PricePoint[] {
+    const start = now - WINDOW_MS;
+    const out: PricePoint[] = [];
+    for (let i = 0; i < points.length; i++) {
+        const [time, price] = points[i];
+        if (time > now) {
+            break;
+        }
+        if (time < start) {
+            const next = points[i + 1];
+            if (!next || next[0] > start) {
+                out.push([start, price]);
+            }
+            continue;
+        }
+        out.push([time, price]);
+    }
+    return out;
 }
 
 /** One price segment: price held from start to end */
@@ -93,6 +125,7 @@ export function evaluate(points: readonly PricePoint[], current: number | null, 
         bestHourPrice: null,
         bestWeekday: null,
         bestWeekdayPrice: null,
+        hourProfile: Array.from({ length: 24 }, () => null),
     };
     if (coverageMs === 0) {
         return result;
@@ -135,6 +168,9 @@ export function evaluate(points: readonly PricePoint[], current: number | null, 
         24,
         date => date.getHours(),
         date => nextHour(date),
+    );
+    result.hourProfile = hours.map(entry =>
+        entry.duration < MIN_BUCKET_MS ? null : round3(entry.weighted / entry.duration),
     );
     const bestHour = cheapest(hours);
     if (bestHour) {
@@ -196,7 +232,7 @@ function averagesBy(
 function cheapest(sums: { weighted: number; duration: number }[]): { index: number; average: number } | undefined {
     let best: { index: number; average: number } | undefined;
     sums.forEach((entry, index) => {
-        if (entry.duration < 30 * 60_000) {
+        if (entry.duration < MIN_BUCKET_MS) {
             return;
         }
         const average = entry.weighted / entry.duration;

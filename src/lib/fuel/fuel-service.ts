@@ -19,7 +19,7 @@ import {
 } from './errors';
 import { FUEL_ROOT, rootObjects, stationChannel, stationObjects, type ObjectDefinition } from './objects';
 import { PriceHistory } from './price-history';
-import { evaluate } from './rating';
+import { evaluate, chartPoints } from './rating';
 import type { StationDetail, StationPrices } from './tankerkoenig';
 import { FailureLog, formatDuration } from '../util/failure-log';
 
@@ -235,6 +235,8 @@ export class FuelService {
             await this.deps.setState(`${ch}.bestHourPrice`, result.bestHourPrice);
             await this.deps.setState(`${ch}.bestWeekday`, result.bestWeekday);
             await this.deps.setState(`${ch}.bestWeekdayPrice`, result.bestWeekdayPrice);
+            await this.deps.setState(`${ch}.hourProfile`, JSON.stringify(result.hourProfile));
+            await this.deps.setState(`${ch}.history7d`, JSON.stringify(chartPoints(this.history.points(key), now)));
 
             if (current !== null) {
                 ranking.push({

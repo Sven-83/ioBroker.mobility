@@ -172,5 +172,21 @@ export function stationObjects(index: number, name: string): ObjectDefinition[] 
             role: 'value',
             unit: '€',
         }),
+        state(
+            `${ch}.hourProfile`,
+            n(
+                'Average price per hour of day, 7 days (JSON, 0-23)',
+                'Durchschnittspreis je Uhrzeit, 7 Tage (JSON, 0-23)',
+            ),
+            { type: 'string', role: 'json' },
+        ),
+        state(
+            `${ch}.history7d`,
+            n(
+                'Price changes of the last 7 days (JSON [time, price])',
+                'Preisänderungen der letzten 7 Tage (JSON [Zeit, Preis])',
+            ),
+            { type: 'string', role: 'json' },
+        ),
     ];
 }

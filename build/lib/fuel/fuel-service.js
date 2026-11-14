@@ -171,6 +171,8 @@ class FuelService {
       await this.deps.setState(`${ch}.bestHourPrice`, result.bestHourPrice);
       await this.deps.setState(`${ch}.bestWeekday`, result.bestWeekday);
       await this.deps.setState(`${ch}.bestWeekdayPrice`, result.bestWeekdayPrice);
+      await this.deps.setState(`${ch}.hourProfile`, JSON.stringify(result.hourProfile));
+      await this.deps.setState(`${ch}.history7d`, JSON.stringify((0, import_rating.chartPoints)(this.history.points(key), now)));
       if (current !== null) {
         ranking.push({
           station: `station${station.slot}`,

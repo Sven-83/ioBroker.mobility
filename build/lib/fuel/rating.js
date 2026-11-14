@@ -21,6 +21,7 @@ __export(rating_exports, {
   CHEAP_SHARE: () => CHEAP_SHARE,
   MIN_COVERAGE_MS: () => MIN_COVERAGE_MS,
   MIN_WEEKDAY_COVERAGE_MS: () => MIN_WEEKDAY_COVERAGE_MS,
+  chartPoints: () => chartPoints,
   evaluate: () => evaluate,
   segments: () => segments
 });
@@ -29,6 +30,26 @@ var import_price_history = require("./price-history");
 const CHEAP_SHARE = 0.25;
 const MIN_COVERAGE_MS = 24 * 36e5;
 const MIN_WEEKDAY_COVERAGE_MS = 6 * 24 * 36e5;
+const MIN_BUCKET_MS = 30 * 6e4;
+function chartPoints(points, now) {
+  const start = now - import_price_history.WINDOW_MS;
+  const out = [];
+  for (let i = 0; i < points.length; i++) {
+    const [time, price] = points[i];
+    if (time > now) {
+      break;
+    }
+    if (time < start) {
+      const next = points[i + 1];
+      if (!next || next[0] > start) {
+        out.push([start, price]);
+      }
+      continue;
+    }
+    out.push([time, price]);
+  }
+  return out;
+}
 function segments(points, now) {
   const windowStart = now - import_price_history.WINDOW_MS;
   const result = [];
@@ -58,7 +79,8 @@ function evaluate(points, current, now) {
     bestHour: null,
     bestHourPrice: null,
     bestWeekday: null,
-    bestWeekdayPrice: null
+    bestWeekdayPrice: null,
+    hourProfile: Array.from({ length: 24 }, () => null)
   };
   if (coverageMs === 0) {
     return result;
@@ -95,6 +117,9 @@ function evaluate(points, current, now) {
     24,
     (date) => date.getHours(),
     (date) => nextHour(date)
+  );
+  result.hourProfile = hours.map(
+    (entry) => entry.duration < MIN_BUCKET_MS ? null : round3(entry.weighted / entry.duration)
   );
   const bestHour = cheapest(hours);
   if (bestHour) {
@@ -134,7 +159,7 @@ function averagesBy(parts, size, bucket, next) {
 function cheapest(sums) {
   let best;
   sums.forEach((entry, index) => {
-    if (entry.duration < 30 * 6e4) {
+    if (entry.duration < MIN_BUCKET_MS) {
       return;
     }
     const average = entry.weighted / entry.duration;
@@ -164,6 +189,7 @@ function round3(value) {
   CHEAP_SHARE,
   MIN_COVERAGE_MS,
   MIN_WEEKDAY_COVERAGE_MS,
+  chartPoints,
   evaluate,
   segments
 });

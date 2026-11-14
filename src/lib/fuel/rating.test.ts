@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import type { PricePoint } from './price-history';
-import { MIN_COVERAGE_MS, evaluate, segments } from './rating';
+import { MIN_COVERAGE_MS, chartPoints, evaluate, segments } from './rating';
 
 const H = 3_600_000;
 const DAY = 24 * H;
@@ -86,6 +86,9 @@ describe('fuel/rating', () => {
         const result = evaluate(dailyPattern(3), 1.7, MONDAY + 3 * DAY);
         expect(result.bestHour).to.equal(18);
         expect(result.bestHourPrice).to.equal(1.7);
+        expect(result.hourProfile).to.have.length(24);
+        expect(result.hourProfile[3]).to.equal(1.8);
+        expect(result.hourProfile[20]).to.equal(1.7);
         expect(result.bestWeekday).to.equal(null); // less than 6 days
     });
 
@@ -98,5 +101,34 @@ describe('fuel/rating', () => {
         const result = evaluate(points, 1.8, MONDAY + 7 * DAY);
         expect(result.bestWeekday).to.equal(4); // Thursday, 0 = Sunday
         expect(result.bestWeekdayPrice).to.equal(1.65);
+    });
+
+    describe('chartPoints', () => {
+        const now = MONDAY + 8 * DAY;
+        it('moves the price valid at the window start to the start', () => {
+            const points: PricePoint[] = [
+                [now - 9 * DAY, 1.9],
+                [now - 8 * DAY, 1.8],
+                [now - 3 * DAY, null],
+                [now - 2 * DAY, 1.7],
+            ];
+            expect(chartPoints(points, now)).to.deep.equal([
+                [now - 7 * DAY, 1.8],
+                [now - 3 * DAY, null],
+                [now - 2 * DAY, 1.7],
+            ]);
+        });
+        it('keeps a point exactly at the start and drops future points', () => {
+            expect(
+                chartPoints(
+                    [
+                        [now - 7 * DAY, 1.8],
+                        [now + H, 1.9],
+                    ],
+                    now,
+                ),
+            ).to.deep.equal([[now - 7 * DAY, 1.8]]);
+        });
+        it('empty', () => expect(chartPoints([], now)).to.deep.equal([]));
     });
 });
