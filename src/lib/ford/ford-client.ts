@@ -250,7 +250,28 @@ export class FordClient {
         if (!day.test(startDate) || !day.test(endDate)) {
             throw new FordResponseError('charge log: invalid date');
         }
-        return this.get(`/fccs?startDate=${startDate}&endDate=${endDate}`, 'charge log');
+        // the format of the dates is not documented: plain day first, then two ISO forms (at most 3 requests)
+        const variants: [string, string][] = [
+            [startDate, endDate],
+            [`${startDate}T00:00:00Z`, `${endDate}T23:59:59Z`],
+            [`${startDate}T00:00:00.000Z`, `${endDate}T23:59:59.999Z`],
+        ];
+        let rejected: FordResponseError | undefined;
+        for (const [start, end] of variants) {
+            try {
+                return await this.get(
+                    `/fccs?startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`,
+                    'charge log',
+                );
+            } catch (error) {
+                if (error instanceof FordResponseError && error.status === 400) {
+                    rejected = error;
+                    continue;
+                }
+                throw error;
+            }
+        }
+        throw rejected ?? new FordResponseError('charge log: no answer');
     }
 
     /** Cancels running requests */
@@ -404,7 +425,19 @@ export class FordClient {
             throw new FordLoginRequiredError(`${label}: access denied (HTTP ${response.status})`);
         }
         if (!response.ok) {
-            throw new FordResponseError(`${label}: HTTP ${response.status}`, response.status);
+            // a 400 usually says which parameter is wrong; short, single line, no vehicle number
+            const hint =
+                response.status === 400
+                    ? text
+                          .replace(/\s+/g, ' ')
+                          .replace(/\b[A-HJ-NPR-Z0-9]{17}\b/g, '…')
+                          .trim()
+                          .slice(0, 160)
+                    : '';
+            throw new FordResponseError(
+                `${label}: HTTP ${response.status}${hint ? ` (${hint})` : ''}`,
+                response.status,
+            );
         }
         if (text.trim() === '') {
             return null;
