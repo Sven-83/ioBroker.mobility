@@ -473,6 +473,110 @@
                     "xl": 12
                 }
             }
+        },
+        "notifyTab": {
+            "type": "panel",
+            "label": "Messages",
+            "items": {
+                "notifyInfo": {
+                    "type": "staticText",
+                    "text": "notify_info_text",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "notifyEnabled": {
+                    "type": "checkbox",
+                    "label": "Send messages",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "notifyInstance": {
+                    "type": "instance",
+                    "adapter": "telegram",
+                    "label": "Telegram instance",
+                    "hidden": "!data.notifyEnabled",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "notifyUsers": {
+                    "type": "text",
+                    "label": "Receivers",
+                    "help": "Telegram user names, separated by commas. Empty: all users of the instance.",
+                    "hidden": "!data.notifyEnabled",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "notifyFuel": {
+                    "type": "checkbox",
+                    "label": "Fuel: tank low and price cheap",
+                    "hidden": "!data.notifyEnabled",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "notifyCharge": {
+                    "type": "checkbox",
+                    "label": "Charging finished or stopped by an error",
+                    "hidden": "!data.notifyEnabled",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "notifyPlug": {
+                    "type": "checkbox",
+                    "label": "Electric car not plugged in (evening)",
+                    "hidden": "!data.notifyEnabled",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "notifyTyres": {
+                    "type": "checkbox",
+                    "label": "Tyre loses air",
+                    "hidden": "!data.notifyEnabled",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "_notifyTest": {
+                    "type": "sendTo",
+                    "command": "notifyTest",
+                    "label": "Send a test message",
+                    "jsonData": "{\"instance\":\"${data.notifyInstance}\",\"users\":\"${data.notifyUsers}\"}",
+                    "showProcess": true,
+                    "hidden": "!data.notifyEnabled",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                }
+            }
         }
     }
 }

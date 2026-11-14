@@ -37,11 +37,14 @@ var import_config3 = require("./lib/fuel/config");
 var import_fuel_service = require("./lib/fuel/fuel-service");
 var import_objects3 = require("./lib/fuel/objects");
 var import_tankerkoenig = require("./lib/fuel/tankerkoenig");
+var import_notifier = require("./lib/notify/notifier");
+const NOTIFY_TIMEOUT_MS = 15e3;
 const FUEL_HISTORY_FILE = "fuel-history.json";
 class Mobility extends utils.Adapter {
   fuel;
   easee;
   ford;
+  notifier;
   /** Connection state per running part; info.connection = all running parts connected */
   connections = /* @__PURE__ */ new Map();
   /** Last value written to info.connection (written only on change) */
@@ -53,6 +56,7 @@ class Mobility extends utils.Adapter {
     });
     this.on("ready", this.onReady.bind(this));
     this.on("stateChange", this.onStateChange.bind(this));
+    this.on("message", this.onMessage.bind(this));
     this.on("unload", this.onUnload.bind(this));
   }
   /**
@@ -61,6 +65,7 @@ class Mobility extends utils.Adapter {
   async onReady() {
     await this.setState("info.connection", false, true);
     this.connectionWritten = false;
+    await this.startNotifier();
     await this.startFuel();
     await this.startEasee();
     await this.startFord();
@@ -69,6 +74,118 @@ class Mobility extends utils.Adapter {
         "Nothing configured yet - enter fuel price, Easee and/or Ford settings in the instance settings"
       );
     }
+  }
+  /**
+   * Writes a state with ack and lets the notifier read along.
+   *
+   * @param id - Relative state ID
+   * @param value - Value
+   */
+  async write(id, value) {
+    var _a;
+    await this.setState(id, value, true);
+    (_a = this.notifier) == null ? void 0 : _a.observe(id, value);
+  }
+  /** Starts the messages (Telegram) if they are switched on */
+  async startNotifier() {
+    var _a;
+    const native = this.config;
+    if (native.notifyEnabled !== true) {
+      return;
+    }
+    const kinds = /* @__PURE__ */ new Set();
+    for (const [field, kind] of [
+      ["notifyFuel", "fuel"],
+      ["notifyCharge", "charge"],
+      ["notifyPlug", "plug"],
+      ["notifyTyres", "tyres"]
+    ]) {
+      if (native[field] !== false) {
+        kinds.add(kind);
+      }
+    }
+    const german = await this.isGerman();
+    this.notifier = new import_notifier.Notifier(
+      {
+        send: (text) => this.notify(text, native.notifyInstance, native.notifyUsers),
+        read: async () => {
+          var _a2, _b;
+          return (_b = (_a2 = await this.getStateAsync(import_notifier.NOTIFY_STATE)) == null ? void 0 : _a2.val) != null ? _b : void 0;
+        },
+        write: (value) => this.setState(import_notifier.NOTIFY_STATE, value, true),
+        now: () => Date.now(),
+        info: (message) => this.log.info(message),
+        warn: (message) => this.log.warn(message)
+      },
+      { kinds, german }
+    );
+    await this.notifier.start();
+    this.log.info(
+      `Messages: ${[...kinds].join(", ") || "none"} via ${(_a = (0, import_notifier.notifyInstance)(native.notifyInstance)) != null ? _a : "?"}`
+    );
+  }
+  /** Language of the system is German */
+  async isGerman() {
+    var _a;
+    try {
+      const config = await this.getForeignObjectAsync("system.config");
+      return ((_a = config == null ? void 0 : config.common) == null ? void 0 : _a.language) === "de";
+    } catch {
+      return false;
+    }
+  }
+  /**
+   * Sends a message through a messenger instance (telegram.0 by default). Text only.
+   *
+   * @param text - Message
+   * @param instanceValue - Instance from the config
+   * @param usersValue - Receivers from the config, empty for all
+   */
+  async notify(text, instanceValue, usersValue) {
+    var _a;
+    const instance = (0, import_notifier.notifyInstance)(instanceValue);
+    if (!instance) {
+      throw new Error("the instance for messages is not valid (example: telegram.0)");
+    }
+    if (!((_a = await this.getForeignStateAsync(`system.adapter.${instance}.alive`)) == null ? void 0 : _a.val)) {
+      throw new Error(`${instance} is not running`);
+    }
+    const users = (0, import_notifier.notifyUsers)(usersValue);
+    for (const user of users.length > 0 ? users : [void 0]) {
+      const answer = await this.sendToAsync(instance, "send", user ? { text, user } : { text }, {
+        timeout: NOTIFY_TIMEOUT_MS
+      });
+      if (answer && typeof answer === "object" && "error" in answer && answer.error) {
+        throw new Error(`${instance}: ${typeof answer.error === "string" ? answer.error : "error"}`);
+      }
+      if (answer === 0) {
+        throw new Error(
+          `${instance} sent the message to nobody${user ? ` (receiver "${user}" unknown?)` : ""}`
+        );
+      }
+    }
+  }
+  /**
+   * Button "send a test message" in the instance settings.
+   *
+   * @param obj - Message from the admin
+   */
+  onMessage(obj) {
+    var _a;
+    if ((obj == null ? void 0 : obj.command) !== "notifyTest" || !obj.callback) {
+      return;
+    }
+    const data = (_a = obj.message) != null ? _a : {};
+    void (async () => {
+      const german = await this.isGerman();
+      const text = german ? "mobility: Testnachricht. Meldungen zu Tanken, Laden und Reifen kommen hier an." : "mobility: test message. Messages about fuel, charging and tyres arrive here.";
+      try {
+        await this.notify(text, data.instance, data.users);
+        this.sendTo(obj.from, obj.command, { result: german ? "Gesendet" : "Sent" }, obj.callback);
+      } catch (error) {
+        this.sendTo(obj.from, obj.command, { error: error.message }, obj.callback);
+      }
+    })();
   }
   /** Validates the fuel config and starts the fuel service if it is complete */
   async startFuel() {
@@ -97,9 +214,7 @@ class Mobility extends utils.Adapter {
       clearTimeout: (handle) => this.clearTimeout(handle),
       ensureObjects: (definitions) => this.ensureObjects(definitions),
       removeStationsExcept: (slots) => this.removeChannelsExcept(`${import_objects3.FUEL_ROOT}.station`, slots, "Fuel prices", true),
-      setState: async (id, value) => {
-        await this.setState(id, value, true);
-      },
+      setState: (id, value) => this.write(id, value),
       loadHistory: async () => {
         try {
           const { file } = await this.readFileAsync(this.namespace, FUEL_HISTORY_FILE);
@@ -132,9 +247,7 @@ class Mobility extends utils.Adapter {
       clearTimeout: (handle) => this.clearTimeout(handle),
       ensureObjects: (definitions) => this.ensureObjects(definitions),
       removeChargersExcept: (slots) => this.removeChannelsExcept(`${import_objects.EASEE_ROOT}.charger`, slots, "Easee", false),
-      setState: async (id, value) => {
-        await this.setState(id, value, true);
-      },
+      setState: (id, value) => this.write(id, value),
       onConnection: (connected) => this.setConnection("easee", connected)
     });
     if (config.stream) {
@@ -163,9 +276,7 @@ class Mobility extends utils.Adapter {
           setTimeout: (callback, ms) => this.setTimeout(callback, ms),
           clearTimeout: (handle) => this.clearTimeout(handle),
           ensureObjects: (definitions) => this.ensureObjects(definitions),
-          setState: async (id, value) => {
-            await this.setState(id, value, true);
-          },
+          setState: (id, value) => this.write(id, value),
           load: async (slot) => {
             try {
               const { file } = await this.readFileAsync(this.namespace, `easee-sessions-${slot}.json`);
@@ -204,9 +315,7 @@ class Mobility extends utils.Adapter {
       setTimeout: (callback, ms) => this.setTimeout(callback, ms),
       clearTimeout: (handle) => this.clearTimeout(handle),
       ensureObjects: (definitions) => this.ensureObjects(definitions),
-      setState: async (id, value) => {
-        await this.setState(id, value, true);
-      },
+      setState: (id, value) => this.write(id, value),
       onConnection: (connected) => this.setConnection("ford", connected),
       loadHistory: async (slot) => {
         try {

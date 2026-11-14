@@ -55,5 +55,16 @@
     "Vehicle 2: tank size (litres)": "Fahrzeug 2: Tankgröße (Liter)",
     "0 = electric / unknown; used for litres and consumption": "0 = elektrisch / unbekannt; für Liter und Verbrauch",
     "Charging sessions from": "Ladevorgänge ab",
-    "Date like 2026-06-01; older sessions are not loaded. Empty = all": "Datum wie 2026-06-01; ältere Ladungen werden nicht geholt. Leer = alle"
+    "Date like 2026-06-01; older sessions are not loaded. Empty = all": "Datum wie 2026-06-01; ältere Ladungen werden nicht geholt. Leer = alle",
+    "Messages": "Meldungen",
+    "notify_info_text": "Kurze Telegram-Meldungen (nur Text): Tank niedrig und eine Tankstelle gerade günstig, Laden fertig oder durch einen Fehler abgebrochen, E-Auto abends nicht eingesteckt, ein Reifen verliert Luft. Jede Meldung kommt einmal pro Ereignis; ein Neustart wiederholt nichts.",
+    "Send messages": "Meldungen senden",
+    "Telegram instance": "Telegram-Instanz",
+    "Receivers": "Empfänger",
+    "Telegram user names, separated by commas. Empty: all users of the instance.": "Telegram-Benutzernamen, mit Komma getrennt. Leer: alle Benutzer der Instanz.",
+    "Fuel: tank low and price cheap": "Tanken: Tank niedrig und Preis günstig",
+    "Charging finished or stopped by an error": "Laden fertig oder durch Fehler abgebrochen",
+    "Electric car not plugged in (evening)": "E-Auto abends nicht eingesteckt",
+    "Tyre loses air": "Reifen verliert Luft",
+    "Send a test message": "Testnachricht senden"
 }

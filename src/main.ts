@@ -20,6 +20,10 @@ import { readFuelConfig } from './lib/fuel/config';
 import { FuelService } from './lib/fuel/fuel-service';
 import { FUEL_ROOT, type ObjectDefinition } from './lib/fuel/objects';
 import { TankerkoenigClient } from './lib/fuel/tankerkoenig';
+import { NOTIFY_STATE, Notifier, notifyInstance, notifyUsers, type MessageKind } from './lib/notify/notifier';
+
+/** Longest wait for an answer of the messenger */
+const NOTIFY_TIMEOUT_MS = 15_000;
 
 /** File in the instance file storage that holds the 7-day price memory */
 const FUEL_HISTORY_FILE = 'fuel-history.json';
@@ -28,6 +32,7 @@ class Mobility extends utils.Adapter {
     private fuel: FuelService | undefined;
     private easee: EaseeService | undefined;
     private ford: FordService | undefined;
+    private notifier: Notifier | undefined;
     /** Connection state per running part; info.connection = all running parts connected */
     private readonly connections = new Map<string, boolean>();
     /** Last value written to info.connection (written only on change) */
@@ -40,6 +45,7 @@ class Mobility extends utils.Adapter {
         });
         this.on('ready', this.onReady.bind(this));
         this.on('stateChange', this.onStateChange.bind(this));
+        this.on('message', this.onMessage.bind(this));
         this.on('unload', this.onUnload.bind(this));
     }
 
@@ -49,6 +55,7 @@ class Mobility extends utils.Adapter {
     private async onReady(): Promise<void> {
         await this.setState('info.connection', false, true);
         this.connectionWritten = false;
+        await this.startNotifier();
         await this.startFuel();
         await this.startEasee();
         await this.startFord();
@@ -57,6 +64,118 @@ class Mobility extends utils.Adapter {
                 'Nothing configured yet - enter fuel price, Easee and/or Ford settings in the instance settings',
             );
         }
+    }
+
+    /**
+     * Writes a state with ack and lets the notifier read along.
+     *
+     * @param id - Relative state ID
+     * @param value - Value
+     */
+    private async write(id: string, value: ioBroker.StateValue): Promise<void> {
+        await this.setState(id, value, true);
+        this.notifier?.observe(id, value);
+    }
+
+    /** Starts the messages (Telegram) if they are switched on */
+    private async startNotifier(): Promise<void> {
+        const native = this.config as unknown as Record<string, unknown>;
+        if (native.notifyEnabled !== true) {
+            return;
+        }
+        const kinds = new Set<MessageKind>();
+        for (const [field, kind] of [
+            ['notifyFuel', 'fuel'],
+            ['notifyCharge', 'charge'],
+            ['notifyPlug', 'plug'],
+            ['notifyTyres', 'tyres'],
+        ] as const) {
+            if (native[field] !== false) {
+                kinds.add(kind);
+            }
+        }
+        const german = await this.isGerman();
+        this.notifier = new Notifier(
+            {
+                send: text => this.notify(text, native.notifyInstance, native.notifyUsers),
+                read: async () => (await this.getStateAsync(NOTIFY_STATE))?.val ?? undefined,
+                write: value => this.setState(NOTIFY_STATE, value, true),
+                now: () => Date.now(),
+                info: message => this.log.info(message),
+                warn: message => this.log.warn(message),
+            },
+            { kinds, german },
+        );
+        await this.notifier.start();
+        this.log.info(
+            `Messages: ${[...kinds].join(', ') || 'none'} via ${notifyInstance(native.notifyInstance) ?? '?'}`,
+        );
+    }
+
+    /** Language of the system is German */
+    private async isGerman(): Promise<boolean> {
+        try {
+            const config = await this.getForeignObjectAsync('system.config');
+            return config?.common?.language === 'de';
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Sends a message through a messenger instance (telegram.0 by default). Text only.
+     *
+     * @param text - Message
+     * @param instanceValue - Instance from the config
+     * @param usersValue - Receivers from the config, empty for all
+     */
+    private async notify(text: string, instanceValue: unknown, usersValue: unknown): Promise<void> {
+        const instance = notifyInstance(instanceValue);
+        if (!instance) {
+            throw new Error('the instance for messages is not valid (example: telegram.0)');
+        }
+        if (!(await this.getForeignStateAsync(`system.adapter.${instance}.alive`))?.val) {
+            throw new Error(`${instance} is not running`);
+        }
+        const users = notifyUsers(usersValue);
+        for (const user of users.length > 0 ? users : [undefined]) {
+            const answer: unknown = await this.sendToAsync(instance, 'send', user ? { text, user } : { text }, {
+                timeout: NOTIFY_TIMEOUT_MS,
+            });
+            if (answer && typeof answer === 'object' && 'error' in answer && answer.error) {
+                throw new Error(`${instance}: ${typeof answer.error === 'string' ? answer.error : 'error'}`);
+            }
+            // telegram answers with the number of messages sent: 0 means it knows no receiver
+            if (answer === 0) {
+                throw new Error(
+                    `${instance} sent the message to nobody${user ? ` (receiver "${user}" unknown?)` : ''}`,
+                );
+            }
+        }
+    }
+
+    /**
+     * Button "send a test message" in the instance settings.
+     *
+     * @param obj - Message from the admin
+     */
+    private onMessage(obj: ioBroker.Message): void {
+        if (obj?.command !== 'notifyTest' || !obj.callback) {
+            return;
+        }
+        const data = (obj.message ?? {}) as Record<string, unknown>;
+        void (async () => {
+            const german = await this.isGerman();
+            const text = german
+                ? 'mobility: Testnachricht. Meldungen zu Tanken, Laden und Reifen kommen hier an.'
+                : 'mobility: test message. Messages about fuel, charging and tyres arrive here.';
+            try {
+                await this.notify(text, data.instance, data.users);
+                this.sendTo(obj.from, obj.command, { result: german ? 'Gesendet' : 'Sent' }, obj.callback);
+            } catch (error) {
+                this.sendTo(obj.from, obj.command, { error: (error as Error).message }, obj.callback);
+            }
+        })();
     }
 
     /** Validates the fuel config and starts the fuel service if it is complete */
@@ -90,9 +209,7 @@ class Mobility extends utils.Adapter {
             ensureObjects: definitions => this.ensureObjects(definitions),
             removeStationsExcept: slots =>
                 this.removeChannelsExcept(`${FUEL_ROOT}.station`, slots, 'Fuel prices', true),
-            setState: async (id, value) => {
-                await this.setState(id, value, true);
-            },
+            setState: (id, value) => this.write(id, value),
             loadHistory: async () => {
                 try {
                     const { file } = await this.readFileAsync(this.namespace, FUEL_HISTORY_FILE);
@@ -126,9 +243,7 @@ class Mobility extends utils.Adapter {
             clearTimeout: handle => this.clearTimeout(handle as ioBroker.Timeout | undefined),
             ensureObjects: definitions => this.ensureObjects(definitions),
             removeChargersExcept: slots => this.removeChannelsExcept(`${EASEE_ROOT}.charger`, slots, 'Easee', false),
-            setState: async (id, value) => {
-                await this.setState(id, value, true);
-            },
+            setState: (id, value) => this.write(id, value),
             onConnection: connected => this.setConnection('easee', connected),
         });
         if (config.stream) {
@@ -157,9 +272,7 @@ class Mobility extends utils.Adapter {
                     setTimeout: (callback, ms) => this.setTimeout(callback, ms),
                     clearTimeout: handle => this.clearTimeout(handle as ioBroker.Timeout | undefined),
                     ensureObjects: definitions => this.ensureObjects(definitions),
-                    setState: async (id, value) => {
-                        await this.setState(id, value, true);
-                    },
+                    setState: (id, value) => this.write(id, value),
                     load: async slot => {
                         try {
                             const { file } = await this.readFileAsync(this.namespace, `easee-sessions-${slot}.json`);
@@ -200,9 +313,7 @@ class Mobility extends utils.Adapter {
             setTimeout: (callback, ms) => this.setTimeout(callback, ms),
             clearTimeout: handle => this.clearTimeout(handle as ioBroker.Timeout | undefined),
             ensureObjects: definitions => this.ensureObjects(definitions),
-            setState: async (id, value) => {
-                await this.setState(id, value, true);
-            },
+            setState: (id, value) => this.write(id, value),
             onConnection: connected => this.setConnection('ford', connected),
             loadHistory: async slot => {
                 try {

@@ -59,6 +59,7 @@
         "mode": "daemon",
         "type": "vehicle",
         "compact": true,
+        "messagebox": true,
         "connectionType": "cloud",
         "dataSource": "poll",
         "adminUI": {
@@ -100,7 +101,14 @@
         "fordVehicle1Name": "",
         "fordVehicle2Name": "",
         "fordVehicle1Tank": 0,
-        "fordVehicle2Tank": 0
+        "fordVehicle2Tank": 0,
+        "notifyEnabled": false,
+        "notifyInstance": "telegram.0",
+        "notifyUsers": "",
+        "notifyFuel": true,
+        "notifyCharge": true,
+        "notifyPlug": true,
+        "notifyTyres": true
     },
     "encryptedNative": ["fuelApiKey", "easeePassword", "fordClientSecret"],
     "protectedNative": ["fuelApiKey", "easeePassword", "fordClientSecret"],
@@ -124,6 +132,19 @@
                 "read": true,
                 "write": false,
                 "def": false
+            },
+            "native": {}
+        },
+        {
+            "_id": "info.notifications",
+            "type": "state",
+            "common": {
+                "role": "json",
+                "name": "Messages sent (internal)",
+                "type": "string",
+                "read": true,
+                "write": false,
+                "def": "{}"
             },
             "native": {}
         }
