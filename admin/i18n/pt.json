@@ -57,14 +57,15 @@
     "Charging sessions from": "Charging sessions from",
     "Date like 2026-06-01; older sessions are not loaded. Empty = all": "Date like 2026-06-01; older sessions are not loaded. Empty = all",
     "Messages": "Messages",
-    "notify_info_text": "Short Telegram messages (text only): tank low while a station is cheap, charging finished or stopped by an error, electric car not plugged in in the evening, a tyre losing air. Each message comes once per event; a restart repeats nothing.",
+    "notify_info_text": "Short Telegram messages (text only): tank low while a station is cheap, charging stopped by an error, electric car not plugged in in the evening, a tyre losing air. Optionally also \"charging finished\". Each message comes once per event; a restart repeats nothing.",
     "Send messages": "Send messages",
     "Telegram instance": "Telegram instance",
     "Receivers": "Receivers",
     "Telegram user names, separated by commas. Empty: all users of the instance.": "Telegram user names, separated by commas. Empty: all users of the instance.",
     "Fuel: tank low and price cheap": "Fuel: tank low and price cheap",
-    "Charging finished or stopped by an error": "Charging finished or stopped by an error",
     "Electric car not plugged in (evening)": "Electric car not plugged in (evening)",
     "Tyre loses air": "Tyre loses air",
-    "Send a test message": "Send a test message"
+    "Send a test message": "Send a test message",
+    "Charging stopped by an error": "Charging stopped by an error",
+    "Charging finished": "Charging finished"
 }

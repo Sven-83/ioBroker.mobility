@@ -4,7 +4,7 @@
  * The notifier reads along the values the other parts write (observe()) and needs no request of its own:
  *  - fuel:   a car that fills up has <= 25 % and the cheapest open station is rated "cheap";
  *            again after refuelling (> 30 %) or at the earliest the next day
- *  - full:   a charger goes from "charging" to "completed"; every time
+ *  - full:   a charger goes from "charging" to "completed"; every time (own switch, off by default)
  *  - abort:  Ford reports a charging fault, or a charger goes from "charging" to "error";
  *            again only after the fault was gone
  *  - plug:   Ford warning "not plugged in" (evening, low battery); once per evening
@@ -26,7 +26,7 @@ const OP_CHARGING = 3;
 const OP_COMPLETED = 4;
 const OP_ERROR = 5;
 
-export type MessageKind = 'fuel' | 'charge' | 'plug' | 'tyres';
+export type MessageKind = 'fuel' | 'full' | 'charge' | 'plug' | 'tyres';
 
 /** What the instance settings switch on */
 export interface NotifyOptions {
@@ -247,7 +247,7 @@ export class Notifier {
         const g = this.options.german;
         const name = text(this.values.get(`easee.charger${slot}.name`)) || `Wallbox ${slot}`;
         const car = this.pluggedCar();
-        if (now === OP_COMPLETED && this.on('charge')) {
+        if (now === OP_COMPLETED && this.on('full')) {
             const kwh = num(this.values.get(`easee.charger${slot}.sessionEnergy`));
             const cost = num(this.values.get(`easee.charger${slot}.sessionCost`));
             const soc = car ? num(this.values.get(`ford.vehicle${car.slot}.soc`)) : null;

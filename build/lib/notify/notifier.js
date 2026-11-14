@@ -150,7 +150,7 @@ class Notifier {
     const g = this.options.german;
     const name = text(this.values.get(`easee.charger${slot}.name`)) || `Wallbox ${slot}`;
     const car = this.pluggedCar();
-    if (now === OP_COMPLETED && this.on("charge")) {
+    if (now === OP_COMPLETED && this.on("full")) {
       const kwh = num(this.values.get(`easee.charger${slot}.sessionEnergy`));
       const cost = num(this.values.get(`easee.charger${slot}.sessionCost`));
       const soc = car ? num(this.values.get(`ford.vehicle${car.slot}.soc`)) : null;

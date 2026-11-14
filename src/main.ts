@@ -84,6 +84,10 @@ class Mobility extends utils.Adapter {
             return;
         }
         const kinds = new Set<MessageKind>();
+        // notifyFull is off unless set; the others are on unless switched off
+        if (native.notifyFull === true) {
+            kinds.add('full');
+        }
         for (const [field, kind] of [
             ['notifyFuel', 'fuel'],
             ['notifyCharge', 'charge'],

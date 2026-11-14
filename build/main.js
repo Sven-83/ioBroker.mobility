@@ -94,6 +94,9 @@ class Mobility extends utils.Adapter {
       return;
     }
     const kinds = /* @__PURE__ */ new Set();
+    if (native.notifyFull === true) {
+      kinds.add("full");
+    }
     for (const [field, kind] of [
       ["notifyFuel", "fuel"],
       ["notifyCharge", "charge"],

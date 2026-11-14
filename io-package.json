@@ -107,6 +107,7 @@
         "notifyUsers": "",
         "notifyFuel": true,
         "notifyCharge": true,
+        "notifyFull": false,
         "notifyPlug": true,
         "notifyTyres": true
     },

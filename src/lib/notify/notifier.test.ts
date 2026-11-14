@@ -4,7 +4,7 @@ import { Notifier, notifyInstance, notifyUsers, type MessageKind, type NotifyHos
 const H = 3_600_000;
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- test helper
-function setup(kinds: MessageKind[] = ['fuel', 'charge', 'plug', 'tyres'], stored?: string, failWith?: Error) {
+function setup(kinds: MessageKind[] = ['fuel', 'full', 'charge', 'plug', 'tyres'], stored?: string, failWith?: Error) {
     const sent: string[] = [];
     const logs: string[] = [];
     let memory: string | undefined = stored;
@@ -100,6 +100,16 @@ describe('notify/notifier', () => {
         t.notifier.observe('easee.charger1.opMode', 4);
         await t.notifier.flush();
         expect(t.sent).to.deep.equal(['🔋 Stromer fertig geladen an Wallbox A · 24,8 kWh · 8,93 € · Akku 100 %']);
+    });
+
+    it('charging finished only with its own switch', async () => {
+        const t = setup(['fuel', 'charge', 'plug', 'tyres']);
+        await t.notifier.start();
+        base(t.notifier);
+        t.notifier.observe('easee.charger1.opMode', 3);
+        t.notifier.observe('easee.charger1.opMode', 4);
+        await t.notifier.flush();
+        expect(t.sent).to.deep.equal([]);
     });
 
     it('a stop by the user and the first value after a start are no events', async () => {
