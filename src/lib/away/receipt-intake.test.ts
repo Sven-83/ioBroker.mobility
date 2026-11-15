@@ -142,4 +142,35 @@ describe('away/receipt-intake', () => {
         expect(await t.intake.handle('/d/document/gone.pdf')).to.equal('error');
         expect(t.warnings[0]).to.contain('not readable');
     });
+
+    it('takes over a subscription invoice', async () => {
+        const t = setup({
+            '/d/document/s.pdf': pdf([
+                'Octopus Electroverse Ltd',
+                'Ladeanbieter Abonnement-Rechnung',
+                'Anbieter',
+                'Netz A',
+                'Beleg',
+                '200001',
+                'Beginn des Abonnementzeitraums',
+                '31st Okt. 2026',
+                'Ende des Abonnementzeitraums',
+                '29th Nov. 2026',
+                'Gesamt (inkl. MwSt.)',
+                '11,99 €',
+            ]),
+        });
+        expect(await t.intake.handle('/d/document/s.pdf')).to.equal('added');
+        expect(t.replies).to.deep.equal([
+            '42: 🧾 Abo-Rechnung übernommen: Abo 31.10.2026–29.11.2026 · Netz A · 11,99 €',
+        ]);
+        expect(t.deleted).to.deep.equal(['/d/document/s.pdf']);
+    });
+
+    it('answers for Electroverse PDFs of an unknown kind and keeps them', async () => {
+        const t = setup({ '/d/document/o.pdf': pdf(['Octopus Electroverse Ltd', 'Gutschrift']) });
+        expect(await t.intake.handle('/d/document/o.pdf')).to.equal('foreign');
+        expect(t.replies[0]).to.contain('weder Ladebeleg noch Abo-Rechnung');
+        expect(t.deleted).to.have.length(0);
+    });
 });

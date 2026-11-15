@@ -68,6 +68,39 @@ function pieces(discount: boolean): string[] {
     ];
 }
 
+/** Text pieces of a subscription invoice (real order 2026-11-15), anonymised */
+const SUBSCRIPTION = [
+    'Octopus Electroverse Ltd',
+    'Ladeanbieter Abonnement-Rechnung',
+    'Belegdatum: 31st Okt. 2026',
+    'Benutzer',
+    'user@example.invalid',
+    'Anbieter',
+    'Netz A',
+    'Beleg',
+    '200001',
+    'Zusammenfassung des Angebots',
+    '40% Rabatt',
+    'Beginn des Abonnementzeitraums',
+    '31st Okt. 2026',
+    'Abonnement-Partner',
+    'Netz A',
+    'Ende des Abonnementzeitraums',
+    '29th Nov. 2026',
+    'Zeitraum von',
+    'Zeitraum bis',
+    'Kosten',
+    '31/10/26',
+    '29/11/26',
+    '10,08 €',
+    'Nettogesamtbetrag',
+    '10,08 €',
+    'Steuer',
+    '1,91 €',
+    'Gesamt (inkl. MwSt.)',
+    '11,99 €',
+];
+
 describe('away/receipt', () => {
     it('reads amounts and numbers in German style', () => {
         expect(money('11,03 €')).to.equal(11.03);
@@ -135,5 +168,31 @@ describe('away/receipt', () => {
         expect(parseReceipt(noNumber)).to.deep.include({ ok: false, kind: 'broken' });
         const zeroKwh = pieces(false).map(p => (p === '27,02' ? '0,00' : p));
         expect(parseReceipt(zeroKwh)).to.deep.equal({ ok: false, kind: 'broken', reason: 'energy missing' });
+    });
+
+    it('takes over a subscription invoice with 0 kWh and the total', () => {
+        expect(parseReceipt(SUBSCRIPTION)).to.deep.equal({
+            ok: true,
+            receipt: {
+                id: 200001,
+                start: new Date(2026, 9, 31).getTime(),
+                end: new Date(2026, 10, 29).getTime(),
+                kwh: 0,
+                paid: 11.99,
+                discount: 0,
+                pricePerKwh: null,
+                provider: 'Netz A',
+                kind: 'subscription',
+            },
+        });
+        const noTotal = SUBSCRIPTION.filter(p => p !== 'Gesamt (inkl. MwSt.)');
+        expect(parseReceipt(noTotal)).to.deep.equal({ ok: false, kind: 'broken', reason: 'amount missing' });
+    });
+
+    it('knows Electroverse PDFs of an unknown kind', () => {
+        expect(parseReceipt(['Octopus Electroverse Ltd', 'Gutschrift', '5,00 €'])).to.deep.include({
+            ok: false,
+            kind: 'other',
+        });
     });
 });

@@ -103,6 +103,15 @@ export class ReceiptIntake {
             if (result.kind === 'foreign') {
                 return 'foreign';
             }
+            if (result.kind === 'other') {
+                await this.answer(
+                    chat,
+                    g
+                        ? 'ℹ️ Electroverse-PDF, aber weder Ladebeleg noch Abo-Rechnung – nicht gezählt.'
+                        : 'ℹ️ Electroverse PDF, but neither a charging receipt nor a subscription invoice - not counted.',
+                );
+                return 'foreign';
+            }
             this.deps.warn(`Charging on the road: receipt not understood (${result.reason})`);
             await this.answer(
                 chat,
@@ -130,10 +139,15 @@ export class ReceiptIntake {
                     : ` (${result.receipt.discount.toFixed(2)} € discount)`
                 : '';
         this.deps.info(`Charging on the road: receipt taken over: ${text}`);
-        await this.answer(
-            chat,
-            g ? `🧾 Beleg übernommen: ${text}${discount}` : `🧾 Receipt taken over: ${text}${discount}`,
-        );
+        const what =
+            result.receipt.kind === 'subscription'
+                ? g
+                    ? 'Abo-Rechnung übernommen'
+                    : 'Subscription invoice taken over'
+                : g
+                  ? 'Beleg übernommen'
+                  : 'Receipt taken over';
+        await this.answer(chat, `🧾 ${what}: ${text}${discount}`);
         return 'added';
     }
 

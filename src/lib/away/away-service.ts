@@ -16,7 +16,8 @@ import type { Logger, TimerHandle } from '../fuel/fuel-service';
 import type { ObjectDefinition } from '../fuel/objects';
 import { historyObjects } from '../easee/objects';
 import { DAYS, MONTHS, WEEKS } from '../easee/sessions-sync';
-import { SessionReport, type ChargeSession } from '../easee/sessions';
+import { SessionReport, type ChargeSession, type SessionSummary } from '../easee/sessions';
+import { dayKey, weekKey } from '../util/periods';
 import type { AwayReceipt } from './receipt';
 
 export const AWAY_ROOT = 'away';
@@ -117,6 +118,42 @@ function asSession(r: AwayReceipt): ChargeSession {
 }
 
 /**
+ * Adds subscription costs to the periods they start in (subscriptions are no charging sessions).
+ *
+ * @param list - Sums of the charging sessions
+ * @param subscriptions - Subscription invoices
+ * @param key - Period key of a time
+ */
+function withSubscriptions(
+    list: SessionSummary[],
+    subscriptions: AwayReceipt[],
+    key: (t: number) => string,
+): SessionSummary[] {
+    return list.map(p => {
+        const extra = subscriptions.filter(s => key(s.start) === p.period).reduce((a, s) => a + s.paid, 0);
+        return extra ? { ...p, cost: Math.round(((p.cost ?? 0) + extra) * 100) / 100 } : p;
+    });
+}
+
+/**
+ * Same key the session report uses for a period list ("2026-11-14", "2026-W46", "2026-11", "2026").
+ *
+ * @param period - Example key
+ */
+function keyOf(period: string): (t: number) => string {
+    if (/^\d{4}-W\d{2}$/.test(period)) {
+        return t => weekKey(dayKey(t));
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(period)) {
+        return dayKey;
+    }
+    if (/^\d{4}-\d{2}$/.test(period)) {
+        return t => dayKey(t).slice(0, 7);
+    }
+    return t => dayKey(t).slice(0, 4);
+}
+
+/**
  * Short text of a receipt.
  *
  * @param r - Receipt
@@ -128,6 +165,12 @@ export function describeReceipt(r: AwayReceipt, german: boolean): string {
     const date = d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
     const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
     const num = (v: number): string => v.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (r.kind === 'subscription') {
+        const until = new Date(r.end).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
+        return [german ? `Abo ${date}–${until}` : `subscription ${date}–${until}`, r.provider, `${num(r.paid)} €`]
+            .filter(Boolean)
+            .join(' · ');
+    }
     return [`${date} ${time}`, r.provider, `${num(r.kwh)} kWh`, `${num(r.paid)} €`].filter(Boolean).join(' · ');
 }
 
@@ -166,7 +209,7 @@ export class AwayService {
         }
     }
 
-    /** Number of stored receipts */
+    /** Number of stored receipts (sessions and subscriptions) */
     public get count(): number {
         return this.receipts.length;
     }
@@ -179,7 +222,7 @@ export class AwayService {
      */
     public add(receipt: AwayReceipt): Promise<'added' | 'duplicate'> {
         const run = this.chain.then(async (): Promise<'added' | 'duplicate'> => {
-            if (this.receipts.some(r => r.id === receipt.id)) {
+            if (this.receipts.some(r => r.id === receipt.id && r.kind === receipt.kind)) {
                 return 'duplicate';
             }
             const next = [...this.receipts, receipt].sort((a, b) => a.start - b.start);
@@ -212,13 +255,17 @@ export class AwayService {
 
     private async writeReport(): Promise<void> {
         const now = this.deps.now();
-        const report = new SessionReport(this.receipts.map(asSession), 0);
+        const sessions = this.receipts.filter(r => r.kind !== 'subscription');
+        const subscriptions = this.receipts.filter(r => r.kind === 'subscription');
+        const report = new SessionReport(sessions.map(asSession), 0);
+        const add = (list: SessionSummary[]): SessionSummary[] =>
+            list.length ? withSubscriptions(list, subscriptions, keyOf(list[0].period)) : list;
         const p = `${AWAY_ROOT}.history`;
-        const months = report.months(now, MONTHS);
+        const months = add(report.months(now, MONTHS));
         const month = months[months.length - 1];
-        const year = report.year(new Date(now).getFullYear());
-        await this.deps.setState(`${p}.days`, JSON.stringify(report.days(now, DAYS)));
-        await this.deps.setState(`${p}.weeks`, JSON.stringify(report.weeks(now, WEEKS)));
+        const [year] = add([report.year(new Date(now).getFullYear())]);
+        await this.deps.setState(`${p}.days`, JSON.stringify(add(report.days(now, DAYS))));
+        await this.deps.setState(`${p}.weeks`, JSON.stringify(add(report.weeks(now, WEEKS))));
         await this.deps.setState(`${p}.months`, JSON.stringify(months));
         await this.deps.setState(`${p}.monthEnergy`, month.kwh);
         await this.deps.setState(`${p}.yearEnergy`, year.kwh);
@@ -227,6 +274,6 @@ export class AwayService {
         const last = report.last();
         await this.deps.setState(`${p}.lastSession`, last ? JSON.stringify(last) : null);
         await this.deps.setState(`${p}.oldestSession`, report.oldest());
-        await this.deps.setState(`${p}.sessionCount`, this.receipts.length);
+        await this.deps.setState(`${p}.sessionCount`, sessions.length);
     }
 }

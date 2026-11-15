@@ -79,6 +79,13 @@ class ReceiptIntake {
       if (result.kind === "foreign") {
         return "foreign";
       }
+      if (result.kind === "other") {
+        await this.answer(
+          chat,
+          g ? "\u2139\uFE0F Electroverse-PDF, aber weder Ladebeleg noch Abo-Rechnung \u2013 nicht gez\xE4hlt." : "\u2139\uFE0F Electroverse PDF, but neither a charging receipt nor a subscription invoice - not counted."
+        );
+        return "foreign";
+      }
       this.deps.warn(`Charging on the road: receipt not understood (${result.reason})`);
       await this.answer(
         chat,
@@ -97,10 +104,8 @@ class ReceiptIntake {
     }
     const discount = result.receipt.discount > 0 ? g ? ` (${result.receipt.discount.toLocaleString("de-DE", { minimumFractionDigits: 2 })} \u20AC Rabatt)` : ` (${result.receipt.discount.toFixed(2)} \u20AC discount)` : "";
     this.deps.info(`Charging on the road: receipt taken over: ${text}`);
-    await this.answer(
-      chat,
-      g ? `\u{1F9FE} Beleg \xFCbernommen: ${text}${discount}` : `\u{1F9FE} Receipt taken over: ${text}${discount}`
-    );
+    const what = result.receipt.kind === "subscription" ? g ? "Abo-Rechnung \xFCbernommen" : "Subscription invoice taken over" : g ? "Beleg \xFCbernommen" : "Receipt taken over";
+    await this.answer(chat, `\u{1F9FE} ${what}: ${text}${discount}`);
     return "added";
   }
   async answer(chat, text) {

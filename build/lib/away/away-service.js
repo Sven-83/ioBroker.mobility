@@ -28,6 +28,7 @@ module.exports = __toCommonJS(away_service_exports);
 var import_objects = require("../easee/objects");
 var import_sessions_sync = require("../easee/sessions-sync");
 var import_sessions = require("../easee/sessions");
+var import_periods = require("../util/periods");
 const AWAY_ROOT = "away";
 const REFRESH_MS = 36e5;
 function awayObjects() {
@@ -83,12 +84,35 @@ function asSession(r) {
     complete: true
   };
 }
+function withSubscriptions(list, subscriptions, key) {
+  return list.map((p) => {
+    var _a;
+    const extra = subscriptions.filter((s) => key(s.start) === p.period).reduce((a, s) => a + s.paid, 0);
+    return extra ? { ...p, cost: Math.round((((_a = p.cost) != null ? _a : 0) + extra) * 100) / 100 } : p;
+  });
+}
+function keyOf(period) {
+  if (/^\d{4}-W\d{2}$/.test(period)) {
+    return (t) => (0, import_periods.weekKey)((0, import_periods.dayKey)(t));
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(period)) {
+    return import_periods.dayKey;
+  }
+  if (/^\d{4}-\d{2}$/.test(period)) {
+    return (t) => (0, import_periods.dayKey)(t).slice(0, 7);
+  }
+  return (t) => (0, import_periods.dayKey)(t).slice(0, 4);
+}
 function describeReceipt(r, german) {
   const locale = german ? "de-DE" : "en-GB";
   const d = new Date(r.start);
   const date = d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" });
   const time = d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
   const num = (v) => v.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (r.kind === "subscription") {
+    const until = new Date(r.end).toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" });
+    return [german ? `Abo ${date}\u2013${until}` : `subscription ${date}\u2013${until}`, r.provider, `${num(r.paid)} \u20AC`].filter(Boolean).join(" \xB7 ");
+  }
   return [`${date} ${time}`, r.provider, `${num(r.kwh)} kWh`, `${num(r.paid)} \u20AC`].filter(Boolean).join(" \xB7 ");
 }
 class AwayService {
@@ -121,7 +145,7 @@ class AwayService {
       this.timer = void 0;
     }
   }
-  /** Number of stored receipts */
+  /** Number of stored receipts (sessions and subscriptions) */
   get count() {
     return this.receipts.length;
   }
@@ -133,7 +157,7 @@ class AwayService {
    */
   add(receipt) {
     const run = this.chain.then(async () => {
-      if (this.receipts.some((r) => r.id === receipt.id)) {
+      if (this.receipts.some((r) => r.id === receipt.id && r.kind === receipt.kind)) {
         return "duplicate";
       }
       const next = [...this.receipts, receipt].sort((a, b) => a.start - b.start);
@@ -163,13 +187,16 @@ class AwayService {
   async writeReport() {
     var _a, _b;
     const now = this.deps.now();
-    const report = new import_sessions.SessionReport(this.receipts.map(asSession), 0);
+    const sessions = this.receipts.filter((r) => r.kind !== "subscription");
+    const subscriptions = this.receipts.filter((r) => r.kind === "subscription");
+    const report = new import_sessions.SessionReport(sessions.map(asSession), 0);
+    const add = (list) => list.length ? withSubscriptions(list, subscriptions, keyOf(list[0].period)) : list;
     const p = `${AWAY_ROOT}.history`;
-    const months = report.months(now, import_sessions_sync.MONTHS);
+    const months = add(report.months(now, import_sessions_sync.MONTHS));
     const month = months[months.length - 1];
-    const year = report.year(new Date(now).getFullYear());
-    await this.deps.setState(`${p}.days`, JSON.stringify(report.days(now, import_sessions_sync.DAYS)));
-    await this.deps.setState(`${p}.weeks`, JSON.stringify(report.weeks(now, import_sessions_sync.WEEKS)));
+    const [year] = add([report.year(new Date(now).getFullYear())]);
+    await this.deps.setState(`${p}.days`, JSON.stringify(add(report.days(now, import_sessions_sync.DAYS))));
+    await this.deps.setState(`${p}.weeks`, JSON.stringify(add(report.weeks(now, import_sessions_sync.WEEKS))));
     await this.deps.setState(`${p}.months`, JSON.stringify(months));
     await this.deps.setState(`${p}.monthEnergy`, month.kwh);
     await this.deps.setState(`${p}.yearEnergy`, year.kwh);
@@ -178,7 +205,7 @@ class AwayService {
     const last = report.last();
     await this.deps.setState(`${p}.lastSession`, last ? JSON.stringify(last) : null);
     await this.deps.setState(`${p}.oldestSession`, report.oldest());
-    await this.deps.setState(`${p}.sessionCount`, this.receipts.length);
+    await this.deps.setState(`${p}.sessionCount`, sessions.length);
   }
 }
 // Annotate the CommonJS export names for ESM import in node:

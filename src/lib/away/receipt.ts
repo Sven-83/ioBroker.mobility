@@ -8,6 +8,12 @@
  *   ["Rabatt" <net> <VAT> <gross>] ... "Zu zahlender Betrag" <amount>
  * Kept: receipt number, start, end, kWh, provider, price per kWh, discount, amount paid.
  * Dropped right here: user (e-mail), address, charge point (EVSE).
+ *
+ * Subscription invoice ("Ladeanbieter Abonnement-Rechnung", checked 2026-11-15, IONITY 40 % discount):
+ *   ... "Anbieter" <provider> "Beleg" <number> ... "Beginn des Abonnementzeitraums" "31st Okt. 2026" ...
+ *   "Ende des Abonnementzeitraums" "29th Nov. 2026" ... "Gesamt (inkl. MwSt.)" <amount>
+ * It is kept with kind "subscription", 0 kWh and the amount (owner 2026-11-15: subscriptions count as
+ * costs on the road, booked on the first day of the period).
  */
 
 /** One charging session on the road */
@@ -28,13 +34,18 @@ export interface AwayReceipt {
     pricePerKwh: number | null;
     /** Charging network, e.g. IONITY; empty if missing */
     provider: string;
+    /** "subscription" for a subscription invoice (start/end = period, 0 kWh); missing = charging session */
+    kind?: 'subscription';
 }
 
 /** Result of reading a receipt */
 export type ReceiptResult =
     | { ok: true; receipt: AwayReceipt }
-    /** foreign = no Electroverse receipt at all, broken = looks like one but a value is missing */
-    | { ok: false; kind: 'foreign' | 'broken'; reason: string };
+    /**
+     * foreign = no Electroverse PDF at all, other = Electroverse PDF of an unknown kind,
+     * broken = looks like a receipt but a value is missing
+     */
+    | { ok: false; kind: 'foreign' | 'other' | 'broken'; reason: string };
 
 const MONTHS: Record<string, number> = {
     jan: 1,
@@ -84,21 +95,21 @@ export function decimal(s: string | undefined): number | null {
 }
 
 /**
- * Date and time like "31st Okt. 2026 14:03:42" (local time).
+ * Date and time like "31st Okt. 2026 14:03:42" (local time); without time = midnight.
  *
  * @param s - Text piece
  * @returns Epoch ms, null if not readable
  */
 export function receiptTime(s: string | undefined): number | null {
     const m =
-        /^(\d{1,2})(?:st|nd|rd|th)?\.?\s+([A-Za-zÄÖÜäöü]{3,})\.?\s+(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(
+        /^(\d{1,2})(?:st|nd|rd|th)?\.?\s+([A-Za-zÄÖÜäöü]{3,})\.?\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(
             (s ?? '').trim(),
         );
     const month = m ? MONTHS[m[2].slice(0, 3).toLowerCase()] : undefined;
     if (!m || !month) {
         return null;
     }
-    return checkedDate(Number(m[3]), month, Number(m[1]), Number(m[4]), Number(m[5]), Number(m[6] ?? 0));
+    return checkedDate(Number(m[3]), month, Number(m[1]), Number(m[4] ?? 0), Number(m[5] ?? 0), Number(m[6] ?? 0));
 }
 
 /**
@@ -133,11 +144,44 @@ export function parseReceipt(pieces: string[]): ReceiptResult {
         const i = pieces.findIndex(p => label.test(p));
         return i < 0 ? undefined : pieces[i + offset];
     };
-    const kwhRow = pieces.findIndex(p => /^Verbrauch\s*\[kWh\]$/i.test(p));
-    if (!isElectroverse || kwhRow < 0) {
-        return { ok: false, kind: 'foreign', reason: 'no Electroverse charging receipt' };
+    if (!isElectroverse) {
+        return { ok: false, kind: 'foreign', reason: 'no Electroverse PDF' };
     }
     const broken = (reason: string): ReceiptResult => ({ ok: false, kind: 'broken', reason });
+    const provider = (after(/^Anbieter$/) ?? '').slice(0, 60);
+    const kwhRow = pieces.findIndex(p => /^Verbrauch\s*\[kWh\]$/i.test(p));
+    if (kwhRow < 0) {
+        if (!pieces.some(p => /Abonnement-Rechnung/i.test(p))) {
+            return { ok: false, kind: 'other', reason: 'neither charging receipt nor subscription invoice' };
+        }
+        const number = Number(after(/^Beleg$/));
+        if (!Number.isSafeInteger(number) || number <= 0) {
+            return broken('receipt number missing');
+        }
+        const from = receiptTime(after(/^Beginn des Abonnementzeitraums$/));
+        const to = receiptTime(after(/^Ende des Abonnementzeitraums$/));
+        if (from === null || to === null || to < from) {
+            return broken('subscription period missing');
+        }
+        const amount = money(after(/^Gesamt \(inkl\. MwSt\.\)$/));
+        if (amount === null || amount < 0 || amount > 500) {
+            return broken('amount missing');
+        }
+        return {
+            ok: true,
+            receipt: {
+                id: number,
+                start: from,
+                end: to,
+                kwh: 0,
+                paid: Math.round(amount * 100) / 100,
+                discount: 0,
+                pricePerKwh: null,
+                provider: provider === 'Beleg' ? '' : provider,
+                kind: 'subscription',
+            },
+        };
+    }
 
     const id = Number(after(/^Beleg$/));
     if (!Number.isSafeInteger(id) || id <= 0) {
@@ -157,7 +201,6 @@ export function parseReceipt(pieces: string[]): ReceiptResult {
         return broken('amount missing');
     }
     const discountGross = money(after(/^Rabatt$/, 3));
-    const provider = (after(/^Anbieter$/) ?? '').slice(0, 60);
     return {
         ok: true,
         receipt: {

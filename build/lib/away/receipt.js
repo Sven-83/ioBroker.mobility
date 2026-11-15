@@ -60,15 +60,15 @@ function decimal(s) {
   return m ? Number(`${m[1].replace(/\./g, "")}.${(_a = m[2]) != null ? _a : "0"}`) : null;
 }
 function receiptTime(s) {
-  var _a;
-  const m = /^(\d{1,2})(?:st|nd|rd|th)?\.?\s+([A-Za-zÄÖÜäöü]{3,})\.?\s+(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(
+  var _a, _b, _c;
+  const m = /^(\d{1,2})(?:st|nd|rd|th)?\.?\s+([A-Za-zÄÖÜäöü]{3,})\.?\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(
     (s != null ? s : "").trim()
   );
   const month = m ? MONTHS[m[2].slice(0, 3).toLowerCase()] : void 0;
   if (!m || !month) {
     return null;
   }
-  return checkedDate(Number(m[3]), month, Number(m[1]), Number(m[4]), Number(m[5]), Number((_a = m[6]) != null ? _a : 0));
+  return checkedDate(Number(m[3]), month, Number(m[1]), Number((_a = m[4]) != null ? _a : 0), Number((_b = m[5]) != null ? _b : 0), Number((_c = m[6]) != null ? _c : 0));
 }
 function rowTime(s) {
   const m = /^(\d{1,2}):(\d{2})\s+(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec((s != null ? s : "").trim());
@@ -89,17 +89,50 @@ function parseReceipt(pieces) {
     const i = pieces.findIndex((p) => label.test(p));
     return i < 0 ? void 0 : pieces[i + offset];
   };
-  const kwhRow = pieces.findIndex((p) => /^Verbrauch\s*\[kWh\]$/i.test(p));
-  if (!isElectroverse || kwhRow < 0) {
-    return { ok: false, kind: "foreign", reason: "no Electroverse charging receipt" };
+  if (!isElectroverse) {
+    return { ok: false, kind: "foreign", reason: "no Electroverse PDF" };
   }
   const broken = (reason) => ({ ok: false, kind: "broken", reason });
+  const provider = ((_a = after(/^Anbieter$/)) != null ? _a : "").slice(0, 60);
+  const kwhRow = pieces.findIndex((p) => /^Verbrauch\s*\[kWh\]$/i.test(p));
+  if (kwhRow < 0) {
+    if (!pieces.some((p) => /Abonnement-Rechnung/i.test(p))) {
+      return { ok: false, kind: "other", reason: "neither charging receipt nor subscription invoice" };
+    }
+    const number = Number(after(/^Beleg$/));
+    if (!Number.isSafeInteger(number) || number <= 0) {
+      return broken("receipt number missing");
+    }
+    const from = receiptTime(after(/^Beginn des Abonnementzeitraums$/));
+    const to = receiptTime(after(/^Ende des Abonnementzeitraums$/));
+    if (from === null || to === null || to < from) {
+      return broken("subscription period missing");
+    }
+    const amount = money(after(/^Gesamt \(inkl\. MwSt\.\)$/));
+    if (amount === null || amount < 0 || amount > 500) {
+      return broken("amount missing");
+    }
+    return {
+      ok: true,
+      receipt: {
+        id: number,
+        start: from,
+        end: to,
+        kwh: 0,
+        paid: Math.round(amount * 100) / 100,
+        discount: 0,
+        pricePerKwh: null,
+        provider: provider === "Beleg" ? "" : provider,
+        kind: "subscription"
+      }
+    };
+  }
   const id = Number(after(/^Beleg$/));
   if (!Number.isSafeInteger(id) || id <= 0) {
     return broken("receipt number missing");
   }
-  const start = (_a = receiptTime(after(/^Start des Ladevorgangs$/))) != null ? _a : rowTime(pieces[kwhRow - 2]);
-  const end = (_b = receiptTime(after(/^Ende des Ladevorgangs$/))) != null ? _b : rowTime(pieces[kwhRow - 1]);
+  const start = (_b = receiptTime(after(/^Start des Ladevorgangs$/))) != null ? _b : rowTime(pieces[kwhRow - 2]);
+  const end = (_c = receiptTime(after(/^Ende des Ladevorgangs$/))) != null ? _c : rowTime(pieces[kwhRow - 1]);
   if (start === null || end === null || end < start || end - start > MAX_SESSION_MS) {
     return broken("start or end missing");
   }
@@ -112,7 +145,6 @@ function parseReceipt(pieces) {
     return broken("amount missing");
   }
   const discountGross = money(after(/^Rabatt$/, 3));
-  const provider = ((_c = after(/^Anbieter$/)) != null ? _c : "").slice(0, 60);
   return {
     ok: true,
     receipt: {

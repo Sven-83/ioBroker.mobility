@@ -127,4 +127,26 @@ describe('away/away-service', () => {
         const r = { ...receipt(1, new Date(2026, 9, 31, 14, 3), 27.02, 11.03), provider: '' };
         expect(describeReceipt(r, false)).to.equal('31/10/2026 14:03 · 27.02 kWh · 11.03 €');
     });
+
+    it('counts a subscription as cost of its first month, not as session', async () => {
+        const t = setup();
+        await t.service.start();
+        await t.service.add(receipt(1, new Date(2026, 10, 2, 10), 20, 9));
+        const sub: AwayReceipt = {
+            ...receipt(7, new Date(2026, 10, 1), 0, 11.99),
+            end: new Date(2026, 10, 30).getTime(),
+            pricePerKwh: null,
+            kind: 'subscription',
+        };
+        expect(await t.service.add(sub)).to.equal('added');
+        // same number as a charging receipt is no duplicate
+        expect(await t.service.add({ ...receipt(7, new Date(2026, 10, 3), 5, 2) })).to.equal('added');
+        expect(t.states.get('away.history.sessionCount')).to.equal(2);
+        expect(t.states.get('away.history.monthEnergy')).to.equal(25);
+        expect(t.states.get('away.history.monthCost')).to.equal(22.99);
+        expect(t.states.get('away.history.yearCost')).to.equal(22.99);
+        const weeks = JSON.parse(String(t.states.get('away.history.weeks'))) as { period: string; cost: number }[];
+        expect(weeks.find(w => w.period === '2026-W44')?.cost).to.equal(11.99);
+        expect(describeReceipt(sub, true)).to.equal('Abo 01.11.2026–30.11.2026 · Netz A · 11,99 €');
+    });
 });
