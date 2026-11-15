@@ -67,5 +67,8 @@
     "Tyre loses air": "Tyre loses air",
     "Send a test message": "Send a test message",
     "Charging stopped by an error": "Charging stopped by an error",
-    "Charging finished": "Charging finished"
+    "Charging finished": "Charging finished",
+    "Charging on the road (Electroverse receipts)": "Charging on the road (Electroverse receipts)",
+    "away_info_text": "Forward the PDF receipt of a charging session (Octopus Electroverse) to your Telegram bot. The adapter reads date, kWh and the amount paid, answers in the chat and deletes the PDF afterwards; e-mail, address and charge point are not stored. Only PDFs of users logged in to the bot are read. In the Telegram instance switch on \"Save files\" with location \"file system\". Uses the Telegram instance above.",
+    "Read receipts sent to the bot": "Read receipts sent to the bot"
 }

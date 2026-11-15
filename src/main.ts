@@ -6,6 +6,11 @@
 
 import * as utils from '@iobroker/adapter-core';
 import { randomBytes } from 'node:crypto';
+import { readFile, stat, unlink } from 'node:fs/promises';
+import { resolve, sep } from 'node:path';
+import { AwayService } from './lib/away/away-service';
+import { MAX_PDF_BYTES } from './lib/away/pdf-text';
+import { ReceiptIntake, parseUsers } from './lib/away/receipt-intake';
 import { readEaseeConfig } from './lib/easee/config';
 import { EaseeClient } from './lib/easee/easee-client';
 import { EaseeService } from './lib/easee/easee-service';
@@ -25,6 +30,9 @@ import { NOTIFY_STATE, Notifier, notifyInstance, notifyUsers, type MessageKind }
 /** Longest wait for an answer of the messenger */
 const NOTIFY_TIMEOUT_MS = 15_000;
 
+/** File in the instance file storage that holds the receipts of charging on the road */
+const AWAY_FILE = 'away-receipts.json';
+
 /** File in the instance file storage that holds the 7-day price memory */
 const FUEL_HISTORY_FILE = 'fuel-history.json';
 
@@ -33,6 +41,10 @@ class Mobility extends utils.Adapter {
     private easee: EaseeService | undefined;
     private ford: FordService | undefined;
     private notifier: Notifier | undefined;
+    private away: AwayService | undefined;
+    private intake: ReceiptIntake | undefined;
+    /** telegram.N.communicate.pathFile while receipts are read */
+    private receiptPathId: string | undefined;
     /** Connection state per running part; info.connection = all running parts connected */
     private readonly connections = new Map<string, boolean>();
     /** Last value written to info.connection (written only on change) */
@@ -59,7 +71,8 @@ class Mobility extends utils.Adapter {
         await this.startFuel();
         await this.startEasee();
         await this.startFord();
-        if (!this.fuel && !this.easee && !this.ford) {
+        await this.startAway();
+        if (!this.fuel && !this.easee && !this.ford && !this.away) {
             this.log.info(
                 'Nothing configured yet - enter fuel price, Easee and/or Ford settings in the instance settings',
             );
@@ -195,12 +208,7 @@ class Mobility extends utils.Adapter {
             return;
         }
 
-        // meta object for the instance file storage (7-day price memory)
-        await this.setForeignObjectNotExistsAsync(this.namespace, {
-            type: 'meta',
-            common: { name: 'mobility data files', type: 'meta.user' },
-            native: {},
-        });
+        await this.ensureFileStorage();
 
         const client = new TankerkoenigClient(config.apiKey);
         this.fuel = new FuelService(config, {
@@ -226,6 +234,15 @@ class Mobility extends utils.Adapter {
             onConnection: connected => this.setConnection('fuel', connected),
         });
         await this.fuel.start();
+    }
+
+    /** Meta object for the instance file storage (price memory, receipts) */
+    private async ensureFileStorage(): Promise<void> {
+        await this.setForeignObjectNotExistsAsync(this.namespace, {
+            type: 'meta',
+            common: { name: 'mobility data files', type: 'meta.user' },
+            native: {},
+        });
     }
 
     /** Validates the Easee config and starts the Easee service if it is complete */
@@ -329,9 +346,106 @@ class Mobility extends utils.Adapter {
             },
             saveHistory: (slot, text) => this.writeFileAsync(this.namespace, `ford-history-${slot}.json`, text),
         });
+        // the charge log probe (2026-11-14/15) only ever got HTTP 429: its states are gone
+        for (const v of config.vehicles) {
+            for (const name of ['chargeLogs', 'chargeLogsStatus']) {
+                const id = `${vehicleChannel(v.slot)}.${name}`;
+                if (await this.getObjectAsync(id)) {
+                    await this.delObjectAsync(id);
+                }
+            }
+        }
         await this.subscribeStatesAsync('ford.vehicle*.login.response');
         await this.subscribeStatesAsync('ford.vehicle*.refresh');
         await this.ford.start();
+    }
+
+    /** Starts reading charging receipts sent to the Telegram bot, if switched on */
+    private async startAway(): Promise<void> {
+        const native = this.config as unknown as Record<string, unknown>;
+        if (native.awayEnabled !== true) {
+            return;
+        }
+        const instance = notifyInstance(native.notifyInstance);
+        if (!instance) {
+            this.log.warn('Charging on the road: the Telegram instance is not valid (example: telegram.0)');
+            return;
+        }
+        const german = await this.isGerman();
+        await this.ensureFileStorage();
+        const away = new AwayService(
+            {
+                log: this.log,
+                now: () => Date.now(),
+                setTimeout: (callback, ms) => this.setTimeout(callback, ms),
+                clearTimeout: handle => this.clearTimeout(handle as ioBroker.Timeout | undefined),
+                ensureObjects: definitions => this.ensureObjects(definitions),
+                setState: (id, value) => this.write(id, value),
+                load: async () => {
+                    try {
+                        return (await this.readFileAsync(this.namespace, AWAY_FILE)).file.toString();
+                    } catch {
+                        return undefined; // first start
+                    }
+                },
+                save: text => this.writeFileAsync(this.namespace, AWAY_FILE, text),
+            },
+            german,
+        );
+        this.away = away;
+        await away.start();
+
+        // the telegram adapter saves documents in <data dir>/telegram_N/document
+        const folder = resolve(utils.getAbsoluteDefaultDataDir(), instance.replace('.', '_'), 'document');
+        const inFolder = (path: string): string => {
+            const full = resolve(path);
+            if (!full.startsWith(folder + sep)) {
+                throw new Error('file is not in the document folder of the telegram adapter');
+            }
+            return full;
+        };
+        const val = async (state: string): Promise<ioBroker.StateValue | undefined> =>
+            (await this.getForeignStateAsync(`${instance}.communicate.${state}`))?.val ?? undefined;
+        this.intake = new ReceiptIntake(
+            {
+                senderId: async () => {
+                    const v = await val('requestUserId');
+                    return v === undefined || v === '' ? undefined : String(v);
+                },
+                chatId: async () => {
+                    const v = await val('requestChatId');
+                    return typeof v === 'number' || (typeof v === 'string' && v) ? v : undefined;
+                },
+                knownUsers: async () => parseUsers(await val('users')),
+                readFile: async path => {
+                    const full = inFolder(path);
+                    if ((await stat(full)).size > MAX_PDF_BYTES) {
+                        throw new Error('PDF too large');
+                    }
+                    return readFile(full);
+                },
+                deleteFile: path => unlink(inFolder(path)),
+                reply: async (chatId, text) => {
+                    await this.sendToAsync(instance, 'send', chatId === undefined ? { text } : { text, chatId }, {
+                        timeout: NOTIFY_TIMEOUT_MS,
+                    });
+                },
+                add: receipt => away.add(receipt),
+                info: message => this.log.info(message),
+                warn: message => this.log.warn(message),
+            },
+            german,
+        );
+        this.receiptPathId = `${instance}.communicate.pathFile`;
+        await this.subscribeForeignStatesAsync(this.receiptPathId);
+
+        const telegram = (await this.getForeignObjectAsync(`system.adapter.${instance}`))?.native ?? {};
+        if (telegram.saveFiles !== true || telegram.saveFilesTo !== 'filesystem') {
+            this.log.warn(
+                `Charging on the road: in ${instance} switch on "Save files" with location "file system", otherwise receipts sent to the bot are not stored`,
+            );
+        }
+        this.log.info(`Charging on the road: ${away.count} receipts; PDFs sent to ${instance} are read`);
     }
 
     /**
@@ -372,6 +486,15 @@ class Mobility extends utils.Adapter {
      * @param state - New state
      */
     private onStateChange(id: string, state: ioBroker.State | null | undefined): void {
+        if (id === this.receiptPathId && this.intake) {
+            // written by the telegram adapter (ack = true) after it saved a received file
+            if (state && typeof state.val === 'string' && state.val) {
+                this.intake
+                    .handle(state.val)
+                    .catch(error => this.log.warn(`Charging on the road: ${(error as Error).message}`));
+            }
+            return;
+        }
         if (!state || state.ack) {
             return;
         }
@@ -468,6 +591,7 @@ class Mobility extends utils.Adapter {
             this.fuel?.stop();
             this.easee?.stop();
             this.ford?.stop();
+            this.away?.stop();
             void this.setState('info.connection', false, true);
             callback();
         } catch (error) {

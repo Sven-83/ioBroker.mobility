@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import type { FordConfig } from './config';
-import { FordLoginRequiredError, FordNetworkError, FordResponseError } from './errors';
+import { FordLoginRequiredError, FordNetworkError } from './errors';
 import type { GarageInfo } from './ford-client';
 import { EXPIRY_WARNING_MS, FordService, type FordApi, type FordDeps } from './ford-service';
 
@@ -104,19 +104,6 @@ class FakeApi implements FordApi {
         return Promise.resolve(this.telemetry);
     }
 
-    public chargeLogReads: string[][] = [];
-    public chargeLogError: Error | undefined;
-
-    public getChargeLogs(startDate: string, endDate: string): Promise<unknown> {
-        this.chargeLogReads.push([startDate, endDate]);
-        if (this.chargeLogError) {
-            return Promise.reject(this.chargeLogError);
-        }
-        return Promise.resolve({
-            energyTransferLogs: [{ deviceId: 'X', energyConsumed: 30.5, location: { latitude: 1, type: 'PUBLIC' } }],
-        });
-    }
-
     public abort(): void {}
 }
 
@@ -179,47 +166,6 @@ describe('ford/service', () => {
         expect(t.states.get('ford.vehicle2.soc')).to.equal(80);
         expect(t.states.get('ford.vehicle2.odometer')).to.equal(1234);
         expect(t.clock.pending()).to.deep.equal([10 * MIN]);
-    });
-
-    it("reads the charge log once a day after 4 o'clock, never right after the start", async () => {
-        const t = setup();
-        t.clock.time = new Date(2026, 10, 15, 3, 55).getTime();
-        await t.service.start();
-        await t.service.handleLoginResponse(2, 'http://localhost/fordconnect?code=c1&state=abcdef0123456789');
-        await t.clock.next(); // 3:55: first poll after the start
-        const api = t.apis.get(2)!;
-        expect(api.chargeLogReads).to.have.length(0);
-        await t.clock.next(); // 4:05: first poll after 4 o'clock
-        expect(api.chargeLogReads).to.have.length(1);
-        expect(api.chargeLogReads[0][0]).to.match(/^\d{4}-\d{2}-\d{2}$/);
-        expect(JSON.parse(String(t.states.get('ford.vehicle2.chargeLogs')))).to.deep.equal({
-            energyTransferLogs: [{ energyConsumed: 30.5, location: { type: 'PUBLIC' } }],
-        });
-        expect(t.states.get('ford.vehicle2.chargeLogsStatus')).to.match(/^ok, 1 entries/);
-        await t.clock.next(); // 4:15: not again the same day
-        expect(api.chargeLogReads).to.have.length(1);
-    });
-
-    it('a start during the day waits for the next morning', async () => {
-        const t = setup();
-        t.clock.time = new Date(2026, 10, 15, 20, 1).getTime();
-        await t.service.start();
-        await t.service.handleLoginResponse(2, 'http://localhost/fordconnect?code=c1&state=abcdef0123456789');
-        await t.clock.next();
-        expect(t.apis.get(2)!.chargeLogReads).to.have.length(0);
-    });
-
-    it('keeps polling when the charge log is not available', async () => {
-        const t = setup();
-        t.clock.time = new Date(2026, 10, 15, 3, 55).getTime();
-        await t.service.start();
-        t.apis.get(2)!.chargeLogError = new FordResponseError('charge log: HTTP 404', 404);
-        await t.service.handleLoginResponse(2, 'http://localhost/fordconnect?code=c1&state=abcdef0123456789');
-        await t.clock.next();
-        await t.clock.next();
-        expect(t.states.get('ford.vehicle2.soc')).to.equal(80);
-        expect(t.states.get('ford.vehicle2.chargeLogsStatus')).to.contain('HTTP 404');
-        expect(t.logs.filter(l => l.level === 'warn' || l.level === 'error')).to.have.length(2); // only the 2 login hints
     });
 
     it('refuses an address from an older login link', async () => {

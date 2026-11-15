@@ -239,41 +239,6 @@ export class FordClient {
         return body as Record<string, unknown>;
     }
 
-    /**
-     * Charge log of the vehicle (test stage, see charge-logs.ts).
-     *
-     * @param startDate - YYYY-MM-DD
-     * @param endDate - YYYY-MM-DD
-     */
-    public async getChargeLogs(startDate: string, endDate: string): Promise<unknown> {
-        const day = /^\d{4}-\d{2}-\d{2}$/;
-        if (!day.test(startDate) || !day.test(endDate)) {
-            throw new FordResponseError('charge log: invalid date');
-        }
-        // the format of the dates is not documented: plain day first, then two ISO forms (at most 3 requests)
-        const variants: [string, string][] = [
-            [startDate, endDate],
-            [`${startDate}T00:00:00Z`, `${endDate}T23:59:59Z`],
-            [`${startDate}T00:00:00.000Z`, `${endDate}T23:59:59.999Z`],
-        ];
-        let rejected: FordResponseError | undefined;
-        for (const [start, end] of variants) {
-            try {
-                return await this.get(
-                    `/fccs?startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`,
-                    'charge log',
-                );
-            } catch (error) {
-                if (error instanceof FordResponseError && error.status === 400) {
-                    rejected = error;
-                    continue;
-                }
-                throw error;
-            }
-        }
-        throw rejected ?? new FordResponseError('charge log: no answer');
-    }
-
     /** Cancels running requests */
     public abort(): void {
         this.shutdown.abort();

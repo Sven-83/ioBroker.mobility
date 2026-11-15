@@ -194,33 +194,6 @@ describe('ford/client', () => {
         expect(error.message).not.to.contain('secret stuff');
     });
 
-    it('tries ISO dates for the charge log after a 400 and keeps a short hint', async () => {
-        const store = new MemoryStore();
-        store.token = { access: 'a1', refresh: 'r1', expiresAt: Number.MAX_SAFE_INTEGER, authTime: null };
-        const calls: Call[] = [];
-        const client = new FordClient(CLIENT, SECRET, REDIRECT, store, {
-            fetch: server(
-                call =>
-                    call.url.searchParams.get('startDate')?.endsWith('Z')
-                        ? { status: 200, body: { energyTransferLogs: [] } }
-                        : { status: 400, body: { message: 'startDate   must be ISO-8601' } },
-                calls,
-            ),
-        });
-        expect(await client.getChargeLogs('2026-10-15', '2026-11-14')).to.deep.equal({ energyTransferLogs: [] });
-        expect(calls.map(c => c.url.searchParams.get('startDate'))).to.deep.equal([
-            '2026-10-15',
-            '2026-10-15T00:00:00Z',
-        ]);
-        expect(calls[1].url.pathname).to.equal('/fcon-query/v1/fccs');
-
-        const refusing = new FordClient(CLIENT, SECRET, REDIRECT, store, {
-            fetch: server(() => ({ status: 400, body: { message: 'startDate   must be ISO-8601' } })),
-        });
-        const error = await rejection(refusing.getChargeLogs('2026-10-15', '2026-11-14'));
-        expect(error.message).to.equal('charge log: HTTP 400 ({"message":"startDate must be ISO-8601"})');
-    });
-
     it('names the Azure AD B2C error code, but no other error text', async () => {
         expect(b2cErrorCode('AADB2C90085: The service has encountered an internal error.')).to.equal('AADB2C90085');
         expect(b2cErrorCode('invalid_grant')).to.equal(null);

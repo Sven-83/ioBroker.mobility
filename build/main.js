@@ -23,6 +23,11 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var utils = __toESM(require("@iobroker/adapter-core"));
 var import_node_crypto = require("node:crypto");
+var import_promises = require("node:fs/promises");
+var import_node_path = require("node:path");
+var import_away_service = require("./lib/away/away-service");
+var import_pdf_text = require("./lib/away/pdf-text");
+var import_receipt_intake = require("./lib/away/receipt-intake");
 var import_config = require("./lib/easee/config");
 var import_easee_client = require("./lib/easee/easee-client");
 var import_easee_service = require("./lib/easee/easee-service");
@@ -39,12 +44,17 @@ var import_objects3 = require("./lib/fuel/objects");
 var import_tankerkoenig = require("./lib/fuel/tankerkoenig");
 var import_notifier = require("./lib/notify/notifier");
 const NOTIFY_TIMEOUT_MS = 15e3;
+const AWAY_FILE = "away-receipts.json";
 const FUEL_HISTORY_FILE = "fuel-history.json";
 class Mobility extends utils.Adapter {
   fuel;
   easee;
   ford;
   notifier;
+  away;
+  intake;
+  /** telegram.N.communicate.pathFile while receipts are read */
+  receiptPathId;
   /** Connection state per running part; info.connection = all running parts connected */
   connections = /* @__PURE__ */ new Map();
   /** Last value written to info.connection (written only on change) */
@@ -69,7 +79,8 @@ class Mobility extends utils.Adapter {
     await this.startFuel();
     await this.startEasee();
     await this.startFord();
-    if (!this.fuel && !this.easee && !this.ford) {
+    await this.startAway();
+    if (!this.fuel && !this.easee && !this.ford && !this.away) {
       this.log.info(
         "Nothing configured yet - enter fuel price, Easee and/or Ford settings in the instance settings"
       );
@@ -202,11 +213,7 @@ class Mobility extends utils.Adapter {
       }
       return;
     }
-    await this.setForeignObjectNotExistsAsync(this.namespace, {
-      type: "meta",
-      common: { name: "mobility data files", type: "meta.user" },
-      native: {}
-    });
+    await this.ensureFileStorage();
     const client = new import_tankerkoenig.TankerkoenigClient(config.apiKey);
     this.fuel = new import_fuel_service.FuelService(config, {
       client,
@@ -230,6 +237,14 @@ class Mobility extends utils.Adapter {
       onConnection: (connected) => this.setConnection("fuel", connected)
     });
     await this.fuel.start();
+  }
+  /** Meta object for the instance file storage (price memory, receipts) */
+  async ensureFileStorage() {
+    await this.setForeignObjectNotExistsAsync(this.namespace, {
+      type: "meta",
+      common: { name: "mobility data files", type: "meta.user" },
+      native: {}
+    });
   }
   /** Validates the Easee config and starts the Easee service if it is complete */
   async startEasee() {
@@ -330,9 +345,104 @@ class Mobility extends utils.Adapter {
       },
       saveHistory: (slot, text) => this.writeFileAsync(this.namespace, `ford-history-${slot}.json`, text)
     });
+    for (const v of config.vehicles) {
+      for (const name of ["chargeLogs", "chargeLogsStatus"]) {
+        const id = `${(0, import_objects2.vehicleChannel)(v.slot)}.${name}`;
+        if (await this.getObjectAsync(id)) {
+          await this.delObjectAsync(id);
+        }
+      }
+    }
     await this.subscribeStatesAsync("ford.vehicle*.login.response");
     await this.subscribeStatesAsync("ford.vehicle*.refresh");
     await this.ford.start();
+  }
+  /** Starts reading charging receipts sent to the Telegram bot, if switched on */
+  async startAway() {
+    var _a, _b;
+    const native = this.config;
+    if (native.awayEnabled !== true) {
+      return;
+    }
+    const instance = (0, import_notifier.notifyInstance)(native.notifyInstance);
+    if (!instance) {
+      this.log.warn("Charging on the road: the Telegram instance is not valid (example: telegram.0)");
+      return;
+    }
+    const german = await this.isGerman();
+    await this.ensureFileStorage();
+    const away = new import_away_service.AwayService(
+      {
+        log: this.log,
+        now: () => Date.now(),
+        setTimeout: (callback, ms) => this.setTimeout(callback, ms),
+        clearTimeout: (handle) => this.clearTimeout(handle),
+        ensureObjects: (definitions) => this.ensureObjects(definitions),
+        setState: (id, value) => this.write(id, value),
+        load: async () => {
+          try {
+            return (await this.readFileAsync(this.namespace, AWAY_FILE)).file.toString();
+          } catch {
+            return void 0;
+          }
+        },
+        save: (text) => this.writeFileAsync(this.namespace, AWAY_FILE, text)
+      },
+      german
+    );
+    this.away = away;
+    await away.start();
+    const folder = (0, import_node_path.resolve)(utils.getAbsoluteDefaultDataDir(), instance.replace(".", "_"), "document");
+    const inFolder = (path) => {
+      const full = (0, import_node_path.resolve)(path);
+      if (!full.startsWith(folder + import_node_path.sep)) {
+        throw new Error("file is not in the document folder of the telegram adapter");
+      }
+      return full;
+    };
+    const val = async (state) => {
+      var _a2, _b2;
+      return (_b2 = (_a2 = await this.getForeignStateAsync(`${instance}.communicate.${state}`)) == null ? void 0 : _a2.val) != null ? _b2 : void 0;
+    };
+    this.intake = new import_receipt_intake.ReceiptIntake(
+      {
+        senderId: async () => {
+          const v = await val("requestUserId");
+          return v === void 0 || v === "" ? void 0 : String(v);
+        },
+        chatId: async () => {
+          const v = await val("requestChatId");
+          return typeof v === "number" || typeof v === "string" && v ? v : void 0;
+        },
+        knownUsers: async () => (0, import_receipt_intake.parseUsers)(await val("users")),
+        readFile: async (path) => {
+          const full = inFolder(path);
+          if ((await (0, import_promises.stat)(full)).size > import_pdf_text.MAX_PDF_BYTES) {
+            throw new Error("PDF too large");
+          }
+          return (0, import_promises.readFile)(full);
+        },
+        deleteFile: (path) => (0, import_promises.unlink)(inFolder(path)),
+        reply: async (chatId, text) => {
+          await this.sendToAsync(instance, "send", chatId === void 0 ? { text } : { text, chatId }, {
+            timeout: NOTIFY_TIMEOUT_MS
+          });
+        },
+        add: (receipt) => away.add(receipt),
+        info: (message) => this.log.info(message),
+        warn: (message) => this.log.warn(message)
+      },
+      german
+    );
+    this.receiptPathId = `${instance}.communicate.pathFile`;
+    await this.subscribeForeignStatesAsync(this.receiptPathId);
+    const telegram = (_b = (_a = await this.getForeignObjectAsync(`system.adapter.${instance}`)) == null ? void 0 : _a.native) != null ? _b : {};
+    if (telegram.saveFiles !== true || telegram.saveFilesTo !== "filesystem") {
+      this.log.warn(
+        `Charging on the road: in ${instance} switch on "Save files" with location "file system", otherwise receipts sent to the bot are not stored`
+      );
+    }
+    this.log.info(`Charging on the road: ${away.count} receipts; PDFs sent to ${instance} are read`);
   }
   /**
    * Ford token of one vehicle, stored encrypted (system secret) in ford.vehicleN.login.token.
@@ -370,6 +480,12 @@ class Mobility extends utils.Adapter {
    * @param state - New state
    */
   onStateChange(id, state) {
+    if (id === this.receiptPathId && this.intake) {
+      if (state && typeof state.val === "string" && state.val) {
+        this.intake.handle(state.val).catch((error) => this.log.warn(`Charging on the road: ${error.message}`));
+      }
+      return;
+    }
     if (!state || state.ack) {
       return;
     }
@@ -453,11 +569,12 @@ class Mobility extends utils.Adapter {
    * @param callback - Callback function
    */
   onUnload(callback) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     try {
       (_a = this.fuel) == null ? void 0 : _a.stop();
       (_b = this.easee) == null ? void 0 : _b.stop();
       (_c = this.ford) == null ? void 0 : _c.stop();
+      (_d = this.away) == null ? void 0 : _d.stop();
       void this.setState("info.connection", false, true);
       callback();
     } catch (error) {

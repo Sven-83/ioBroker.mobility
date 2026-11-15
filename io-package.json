@@ -109,7 +109,8 @@
         "notifyCharge": true,
         "notifyFull": false,
         "notifyPlug": true,
-        "notifyTyres": true
+        "notifyTyres": true,
+        "awayEnabled": false
     },
     "encryptedNative": ["fuelApiKey", "easeePassword", "fordClientSecret"],
     "protectedNative": ["fuelApiKey", "easeePassword", "fordClientSecret"],

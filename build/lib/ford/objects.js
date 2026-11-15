@@ -153,18 +153,6 @@ function vehicleObjects(slot, name) {
       type: "string",
       role: "json"
     }),
-    state(
-      `${ch}.chargeLogs`,
-      n("Charge log of the vehicle (JSON, test)", "Ladeprotokoll des Fahrzeugs (JSON, Test)"),
-      {
-        type: "string",
-        role: "json"
-      }
-    ),
-    state(`${ch}.chargeLogsStatus`, n("Charge log: last answer", "Ladeprotokoll: letzte Antwort"), {
-      type: "string",
-      role: "text"
-    }),
     state(`${ch}.history.weeks`, n("Last 8 weeks (JSON)", "Letzte 8 Wochen (JSON)"), {
       type: "string",
       role: "json"

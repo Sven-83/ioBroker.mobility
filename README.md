@@ -96,6 +96,18 @@ Fuel price data: [Tankerkönig](https://creativecommons.tankerkoenig.de), licens
 - Polls every 5-60 minutes (default 30) with a random offset; frequent polling can get the account locked.
 - No VIN, number plate or position in object IDs, states or logs.
 
+### Charging on the road (Electroverse receipts)
+
+- Forward the PDF receipt of a charging session (Octopus Electroverse, one PDF per session) to your Telegram bot.
+  The adapter reads receipt number, start, end, kWh, provider, discount and the amount paid, answers in the chat
+  ("receipt taken over: …") and deletes the PDF. E-mail, address and charge point are dropped while reading.
+- `away.history.*` has the same states as `easee.history` (days, weeks, months, month/year energy and cost,
+  last session), `away.lastReceipt` the last receipt as text. Receipts are kept in the instance file
+  `away-receipts.json`; a receipt number is taken over only once.
+- Needs the telegram adapter with "Save files" (location "file system"). It stores files of any sender, so only
+  PDFs of users logged in to the bot (`communicate.users`) are read; other PDFs are left alone without an answer.
+- Own small PDF reader (no PDF library): it reads the simple, generated receipts only.
+
 ## Developer manual
 
 This section is intended for the developer. It can be deleted later.
@@ -219,8 +231,9 @@ Please refer to the [`dev-server` documentation](https://github.com/ioBroker/dev
 - (Sven-83) Easee: charging sessions incl. the past, kWh and costs per week, month and year
 - (Sven-83) Fuel: average price per hour of day (`hourProfile`) and price changes of 7 days (`history7d`) for charts
 - (Sven-83) Ford/Easee: values of the last 14 days (`history.days`), tank size as state (`tankCapacity`)
-- (Sven-83) Ford: daily read of the vehicle charge log (test stage, `chargeLogs` without VIN and places)
 - (Sven-83) Telegram messages (opt-in): tank low and cheap, charging stopped by an error, charging finished (own switch, off by default), not plugged in, tyre loses air
+- (Sven-83) Charging on the road: Electroverse PDF receipts sent to the Telegram bot (`away.*`); the Ford charge log
+  probe is removed (the endpoint only answered HTTP 429)
 
 ### 0.0.1
 
