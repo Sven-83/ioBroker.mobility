@@ -55,6 +55,8 @@ class Mobility extends utils.Adapter {
   intake;
   /** telegram.N.communicate.pathFile while receipts are read */
   receiptPathId;
+  /** telegram.N.communicate.request while receipts are read ("Laden 14 kWh") */
+  receiptTextId;
   /** Connection state per running part; info.connection = all running parts connected */
   connections = /* @__PURE__ */ new Map();
   /** Last value written to info.connection (written only on change) */
@@ -429,13 +431,17 @@ class Mobility extends utils.Adapter {
           });
         },
         add: (receipt) => away.add(receipt),
+        removeLastManual: () => away.removeLastManual(),
+        now: () => Date.now(),
         info: (message) => this.log.info(message),
         warn: (message) => this.log.warn(message)
       },
       german
     );
     this.receiptPathId = `${instance}.communicate.pathFile`;
+    this.receiptTextId = `${instance}.communicate.request`;
     await this.subscribeForeignStatesAsync(this.receiptPathId);
+    await this.subscribeForeignStatesAsync(this.receiptTextId);
     const telegram = (_b = (_a = await this.getForeignObjectAsync(`system.adapter.${instance}`)) == null ? void 0 : _a.native) != null ? _b : {};
     if (telegram.saveFiles !== true || telegram.saveFilesTo !== "filesystem") {
       this.log.warn(
@@ -483,6 +489,12 @@ class Mobility extends utils.Adapter {
     if (id === this.receiptPathId && this.intake) {
       if (state && typeof state.val === "string" && state.val) {
         this.intake.handle(state.val).catch((error) => this.log.warn(`Charging on the road: ${error.message}`));
+      }
+      return;
+    }
+    if (id === this.receiptTextId && this.intake) {
+      if (state && typeof state.val === "string" && state.val) {
+        this.intake.handleText(state.val).catch((error) => this.log.warn(`Charging on the road: ${error.message}`));
       }
       return;
     }

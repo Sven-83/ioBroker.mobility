@@ -149,4 +149,28 @@ describe('away/away-service', () => {
         expect(weeks.find(w => w.period === '2026-W44')?.cost).to.equal(11.99);
         expect(describeReceipt(sub, true)).to.equal('Abo 01.11.2026–30.11.2026 · Netz A · 11,99 €');
     });
+
+    it('counts typed entries as sessions and removes only the newest one', async () => {
+        const t = setup();
+        await t.service.start();
+        await t.service.add(receipt(1, new Date(2026, 10, 2, 10), 20, 9));
+        const typed = (id: number, day: number, kwh: number): AwayReceipt => ({
+            ...receipt(id, new Date(2026, 10, day, 12), kwh, 0),
+            end: new Date(2026, 10, day, 12).getTime(),
+            pricePerKwh: null,
+            provider: '',
+            kind: 'manual',
+        });
+        await t.service.add(typed(5_000, 12, 14));
+        await t.service.add(typed(6_000, 3, 7));
+        expect(t.states.get('away.history.sessionCount')).to.equal(3);
+        expect(t.states.get('away.history.monthEnergy')).to.equal(41);
+        const removed = await t.service.removeLastManual();
+        expect(removed?.id).to.equal(6_000);
+        expect(t.states.get('away.history.monthEnergy')).to.equal(34);
+        expect(parseStore(t.saved[t.saved.length - 1]).map(r => r.id)).to.deep.equal([1, 5_000]);
+        await t.service.removeLastManual();
+        expect(await t.service.removeLastManual()).to.equal(null);
+        expect(describeReceipt(typed(1, 12, 14), true)).to.equal('12.11.2026 · 14,00 kWh · 0,00 € (manuell)');
+    });
 });

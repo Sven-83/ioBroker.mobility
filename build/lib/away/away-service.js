@@ -113,6 +113,9 @@ function describeReceipt(r, german) {
     const until = new Date(r.end).toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" });
     return [german ? `Abo ${date}\u2013${until}` : `subscription ${date}\u2013${until}`, r.provider, `${num(r.paid)} \u20AC`].filter(Boolean).join(" \xB7 ");
   }
+  if (r.kind === "manual") {
+    return `${date} \xB7 ${num(r.kwh)} kWh \xB7 ${num(r.paid)} \u20AC (${german ? "manuell" : "typed"})`;
+  }
   return [`${date} ${time}`, r.provider, `${num(r.kwh)} kWh`, `${num(r.paid)} \u20AC`].filter(Boolean).join(" \xB7 ");
 }
 class AwayService {
@@ -166,6 +169,30 @@ class AwayService {
       await this.writeReport();
       await this.deps.setState(`${AWAY_ROOT}.lastReceipt`, describeReceipt(receipt, this.german));
       return "added";
+    });
+    this.chain = run.then(
+      () => void 0,
+      () => void 0
+    );
+    return run;
+  }
+  /**
+   * Removes the newest typed entry ("Laden löschen").
+   *
+   * @returns The removed entry, null if there is none
+   */
+  removeLastManual() {
+    const run = this.chain.then(async () => {
+      const manual = this.receipts.filter((r) => r.kind === "manual");
+      if (manual.length === 0) {
+        return null;
+      }
+      const last = manual.reduce((a, b) => b.id > a.id ? b : a);
+      const next = this.receipts.filter((r) => r !== last);
+      await this.deps.save(JSON.stringify({ version: 1, receipts: next }));
+      this.receipts = next;
+      await this.writeReport();
+      return last;
     });
     this.chain = run.then(
       () => void 0,

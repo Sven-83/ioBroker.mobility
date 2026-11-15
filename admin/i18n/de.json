@@ -69,6 +69,6 @@
     "Charging stopped by an error": "Laden durch Fehler abgebrochen",
     "Charging finished": "Laden fertig",
     "Charging on the road (Electroverse receipts)": "Laden unterwegs (Electroverse-Belege)",
-    "away_info_text": "Den PDF-Beleg einer Ladung (Octopus Electroverse) an den Telegram-Bot weiterleiten. Der Adapter liest Datum, kWh und den bezahlten Betrag, antwortet im Chat und löscht das PDF danach; E-Mail, Adresse und Ladepunkt werden nicht gespeichert. Gelesen werden nur PDFs von Benutzern, die beim Bot angemeldet sind. In der Telegram-Instanz „Dateien speichern“ mit Ablage „Dateisystem“ einschalten. Nutzt die Telegram-Instanz oben.",
+    "away_info_text": "Den PDF-Beleg einer Ladung (Octopus Electroverse) an den Telegram-Bot weiterleiten. Der Adapter liest Datum, kWh und den bezahlten Betrag, antwortet im Chat und löscht das PDF danach; E-Mail, Adresse und Ladepunkt werden nicht gespeichert. Gelesen werden nur PDFs von Benutzern, die beim Bot angemeldet sind. In der Telegram-Instanz „Dateien speichern“ mit Ablage „Dateisystem“ einschalten. Nutzt die Telegram-Instanz oben. Ladungen ohne Beleg (z. B. bei Freunden) als Text an den Bot: „Laden 14 kWh 0 € 12.11.“ (Reihenfolge egal), „Laden löschen“ entfernt den letzten Text-Eintrag.",
     "Read receipts sent to the bot": "An den Bot gesendete Belege lesen"
 }

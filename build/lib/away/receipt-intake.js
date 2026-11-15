@@ -25,6 +25,7 @@ module.exports = __toCommonJS(receipt_intake_exports);
 var import_pdf_text = require("./pdf-text");
 var import_receipt = require("./receipt");
 var import_away_service = require("./away-service");
+var import_manual = require("./manual");
 function parseUsers(value) {
   try {
     const data = typeof value === "string" && value ? JSON.parse(value) : {};
@@ -56,6 +57,63 @@ class ReceiptIntake {
       () => void 0
     );
     return run;
+  }
+  /**
+   * A text message to the bot (communicate.request); only "Laden ..." is handled.
+   *
+   * @param message - Value of communicate.request, e.g. "[Name]Laden 14 kWh"
+   */
+  handleText(message) {
+    const run = this.chain.then(() => this.processText(message));
+    this.chain = run.then(
+      () => void 0,
+      () => void 0
+    );
+    return run;
+  }
+  async processText(message) {
+    const g = this.german;
+    const command = (0, import_manual.parseManual)(message, this.deps.now());
+    if (!command) {
+      return "ignored";
+    }
+    const sender = await this.deps.senderId();
+    if (!sender || !(await this.deps.knownUsers()).has(sender)) {
+      this.deps.warn('Charging on the road: "Laden" from a Telegram user the bot does not know - ignored');
+      return "unknownSender";
+    }
+    const chat = await this.deps.chatId();
+    if (command.kind === "invalid") {
+      await this.answer(
+        chat,
+        g ? `\u2753 Nicht verstanden (${command.reason}). Beispiel: Laden 14 kWh 5,20 \u20AC 12.11.` : `\u2753 Not understood (${command.reason}). Example: Laden 14 kWh 5.20 \u20AC 12.11.`
+      );
+      return "invalid";
+    }
+    if (command.kind === "delete") {
+      const removed = await this.deps.removeLastManual();
+      await this.answer(
+        chat,
+        removed ? `\u{1F5D1}\uFE0F ${g ? "Gel\xF6scht" : "Deleted"}: ${(0, import_away_service.describeReceipt)(removed, g)}` : g ? "\u2139\uFE0F Kein Text-Eintrag zum L\xF6schen." : "\u2139\uFE0F No typed entry to delete."
+      );
+      return removed ? "deleted" : "invalid";
+    }
+    const entry = {
+      id: this.deps.now(),
+      start: command.time,
+      end: command.time,
+      kwh: command.kwh,
+      paid: command.cost,
+      discount: 0,
+      pricePerKwh: null,
+      provider: "",
+      kind: "manual"
+    };
+    await this.deps.add(entry);
+    const text = (0, import_away_service.describeReceipt)(entry, g);
+    this.deps.info(`Charging on the road: typed entry: ${text}`);
+    await this.answer(chat, `\u{1F9FE} ${g ? "Eingetragen" : "Added"}: ${text}`);
+    return "added";
   }
   async process(path) {
     const g = this.german;

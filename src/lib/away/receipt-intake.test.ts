@@ -43,6 +43,9 @@ const RECEIPT = [
     '10,99 €',
 ];
 
+/** Time of the fake adapter: Sunday 15.11.2026 18:00 local */
+const clock = { now: new Date(2026, 10, 15, 18).getTime() };
+
 /**
  * Intake with fake adapter functions.
  *
@@ -83,6 +86,16 @@ function setup(
             }
             return Promise.resolve(known ? 'duplicate' : 'added');
         },
+        removeLastManual: () => {
+            const manual = added.filter(r => r.kind === 'manual');
+            const last = manual[manual.length - 1];
+            if (!last) {
+                return Promise.resolve(null);
+            }
+            added.splice(added.indexOf(last), 1);
+            return Promise.resolve(last);
+        },
+        now: () => clock.now,
         info: () => undefined,
         warn: message => warnings.push(message),
     };
@@ -172,5 +185,34 @@ describe('away/receipt-intake', () => {
         expect(await t.intake.handle('/d/document/o.pdf')).to.equal('foreign');
         expect(t.replies[0]).to.contain('weder Ladebeleg noch Abo-Rechnung');
         expect(t.deleted).to.have.length(0);
+    });
+
+    it('takes typed entries and deletes the last one', async () => {
+        const t = setup({});
+        expect(await t.intake.handleText('[A]Hallo Bot')).to.equal('ignored');
+        expect(await t.intake.handleText('[A]Laden 12.11. 14 kWh 0 €')).to.equal('added');
+        expect(t.added.map(r => [r.kind, r.kwh, r.paid, new Date(r.start).getDate()])).to.deep.equal([
+            ['manual', 14, 0, 12],
+        ]);
+        expect(t.replies[0]).to.equal('42: 🧾 Eingetragen: 12.11.2026 · 14,00 kWh · 0,00 € (manuell)');
+        expect(await t.intake.handleText('[A]Laden löschen')).to.equal('deleted');
+        expect(t.replies[1]).to.equal('42: 🗑️ Gelöscht: 12.11.2026 · 14,00 kWh · 0,00 € (manuell)');
+        expect(t.added).to.have.length(0);
+        expect(await t.intake.handleText('[A]Laden löschen')).to.equal('invalid');
+        expect(t.replies[2]).to.contain('Kein Text-Eintrag');
+    });
+
+    it('explains a typed entry it does not understand', async () => {
+        const t = setup({});
+        expect(await t.intake.handleText('[A]Laden 14 kWh bei Max')).to.equal('invalid');
+        expect(t.replies[0]).to.contain('Nicht verstanden ("bei Max" not understood)');
+        expect(t.added).to.have.length(0);
+    });
+
+    it('ignores typed entries of unknown senders', async () => {
+        const t = setup({}, '999');
+        expect(await t.intake.handleText('[X]Laden 14 kWh')).to.equal('unknownSender');
+        expect(t.added).to.have.length(0);
+        expect(t.replies).to.have.length(0);
     });
 });

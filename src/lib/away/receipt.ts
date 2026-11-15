@@ -34,8 +34,11 @@ export interface AwayReceipt {
     pricePerKwh: number | null;
     /** Charging network, e.g. IONITY; empty if missing */
     provider: string;
-    /** "subscription" for a subscription invoice (start/end = period, 0 kWh); missing = charging session */
-    kind?: 'subscription';
+    /**
+     * "subscription" for a subscription invoice (start/end = period, 0 kWh), "manual" for a session typed
+     * into Telegram (id = time of entry); missing = charging session from a receipt
+     */
+    kind?: 'subscription' | 'manual';
 }
 
 /** Result of reading a receipt */

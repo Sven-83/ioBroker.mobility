@@ -45,6 +45,8 @@ class Mobility extends utils.Adapter {
     private intake: ReceiptIntake | undefined;
     /** telegram.N.communicate.pathFile while receipts are read */
     private receiptPathId: string | undefined;
+    /** telegram.N.communicate.request while receipts are read ("Laden 14 kWh") */
+    private receiptTextId: string | undefined;
     /** Connection state per running part; info.connection = all running parts connected */
     private readonly connections = new Map<string, boolean>();
     /** Last value written to info.connection (written only on change) */
@@ -431,13 +433,17 @@ class Mobility extends utils.Adapter {
                     });
                 },
                 add: receipt => away.add(receipt),
+                removeLastManual: () => away.removeLastManual(),
+                now: () => Date.now(),
                 info: message => this.log.info(message),
                 warn: message => this.log.warn(message),
             },
             german,
         );
         this.receiptPathId = `${instance}.communicate.pathFile`;
+        this.receiptTextId = `${instance}.communicate.request`;
         await this.subscribeForeignStatesAsync(this.receiptPathId);
+        await this.subscribeForeignStatesAsync(this.receiptTextId);
 
         const telegram = (await this.getForeignObjectAsync(`system.adapter.${instance}`))?.native ?? {};
         if (telegram.saveFiles !== true || telegram.saveFilesTo !== 'filesystem') {
@@ -491,6 +497,15 @@ class Mobility extends utils.Adapter {
             if (state && typeof state.val === 'string' && state.val) {
                 this.intake
                     .handle(state.val)
+                    .catch(error => this.log.warn(`Charging on the road: ${(error as Error).message}`));
+            }
+            return;
+        }
+        if (id === this.receiptTextId && this.intake) {
+            // text to the bot, written by the telegram adapter (ack = true); only "Laden ..." is used
+            if (state && typeof state.val === 'string' && state.val) {
+                this.intake
+                    .handleText(state.val)
                     .catch(error => this.log.warn(`Charging on the road: ${(error as Error).message}`));
             }
             return;

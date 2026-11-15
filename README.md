@@ -106,6 +106,10 @@ Fuel price data: [Tankerkönig](https://creativecommons.tankerkoenig.de), licens
   `away-receipts.json`; a receipt number is taken over only once.
 - Needs the telegram adapter with "Save files" (location "file system"). It stores files of any sender, so only
   PDFs of users logged in to the bot (`communicate.users`) are read; other PDFs are left alone without an answer.
+- Subscription invoices (e.g. IONITY) count as costs of their first month, without kWh.
+- Charging without a receipt (friends, free chargers) can be typed to the bot, parts in any order:
+  `Laden 14 kWh`, `Laden 14 kWh 5,20 €`, `Laden 12.11. 14 kWh 0 €` (also `heute`, `gestern`);
+  `Laden löschen` removes the last typed entry. Other messages to the bot are ignored.
 - Own small PDF reader (no PDF library): it reads the simple, generated receipts only.
 
 ## Developer manual
@@ -234,6 +238,7 @@ Please refer to the [`dev-server` documentation](https://github.com/ioBroker/dev
 - (Sven-83) Telegram messages (opt-in): tank low and cheap, charging stopped by an error, charging finished (own switch, off by default), not plugged in, tyre loses air
 - (Sven-83) Charging on the road: Electroverse PDF receipts sent to the Telegram bot (`away.*`); the Ford charge log
   probe is removed (the endpoint only answered HTTP 429)
+- (Sven-83) Charging on the road: subscription invoices count as costs; typed entries "Laden 14 kWh 5,20 € 12.11."
 
 ### 0.0.1
 

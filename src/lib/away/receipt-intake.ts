@@ -13,6 +13,7 @@
 import { pdfText } from './pdf-text';
 import { parseReceipt, type AwayReceipt } from './receipt';
 import { describeReceipt } from './away-service';
+import { parseManual } from './manual';
 
 /** What the intake needs from the adapter */
 export interface IntakeDeps {
@@ -30,6 +31,10 @@ export interface IntakeDeps {
     reply(chatId: string | number | undefined, text: string): Promise<void>;
     /** Takes over a receipt */
     add(receipt: AwayReceipt): Promise<'added' | 'duplicate'>;
+    /** Removes the newest typed entry */
+    removeLastManual(): Promise<AwayReceipt | null>;
+    /** Current time (epoch ms) */
+    now(): number;
     /** Log on level info */
     info(message: string): void;
     /** Log on level warn */
@@ -37,7 +42,8 @@ export interface IntakeDeps {
 }
 
 /** What happened to a file (for tests and the log) */
-export type IntakeResult = 'ignored' | 'unknownSender' | 'foreign' | 'broken' | 'added' | 'duplicate' | 'error';
+export type IntakeResult =
+    'ignored' | 'unknownSender' | 'foreign' | 'broken' | 'added' | 'duplicate' | 'deleted' | 'invalid' | 'error';
 
 /**
  * Users from telegram.0.communicate.users ({"<id>": {firstName, userName}}).
@@ -79,6 +85,71 @@ export class ReceiptIntake {
             () => undefined,
         );
         return run;
+    }
+
+    /**
+     * A text message to the bot (communicate.request); only "Laden ..." is handled.
+     *
+     * @param message - Value of communicate.request, e.g. "[Name]Laden 14 kWh"
+     */
+    public handleText(message: string): Promise<IntakeResult> {
+        const run = this.chain.then(() => this.processText(message));
+        this.chain = run.then(
+            () => undefined,
+            () => undefined,
+        );
+        return run;
+    }
+
+    private async processText(message: string): Promise<IntakeResult> {
+        const g = this.german;
+        const command = parseManual(message, this.deps.now());
+        if (!command) {
+            return 'ignored';
+        }
+        const sender = await this.deps.senderId();
+        if (!sender || !(await this.deps.knownUsers()).has(sender)) {
+            this.deps.warn('Charging on the road: "Laden" from a Telegram user the bot does not know - ignored');
+            return 'unknownSender';
+        }
+        const chat = await this.deps.chatId();
+        if (command.kind === 'invalid') {
+            await this.answer(
+                chat,
+                g
+                    ? `❓ Nicht verstanden (${command.reason}). Beispiel: Laden 14 kWh 5,20 € 12.11.`
+                    : `❓ Not understood (${command.reason}). Example: Laden 14 kWh 5.20 € 12.11.`,
+            );
+            return 'invalid';
+        }
+        if (command.kind === 'delete') {
+            const removed = await this.deps.removeLastManual();
+            await this.answer(
+                chat,
+                removed
+                    ? `🗑️ ${g ? 'Gelöscht' : 'Deleted'}: ${describeReceipt(removed, g)}`
+                    : g
+                      ? 'ℹ️ Kein Text-Eintrag zum Löschen.'
+                      : 'ℹ️ No typed entry to delete.',
+            );
+            return removed ? 'deleted' : 'invalid';
+        }
+        const entry: AwayReceipt = {
+            id: this.deps.now(),
+            start: command.time,
+            end: command.time,
+            kwh: command.kwh,
+            paid: command.cost,
+            discount: 0,
+            pricePerKwh: null,
+            provider: '',
+            kind: 'manual',
+        };
+        await this.deps.add(entry);
+        const text = describeReceipt(entry, g);
+        this.deps.info(`Charging on the road: typed entry: ${text}`);
+        await this.answer(chat, `🧾 ${g ? 'Eingetragen' : 'Added'}: ${text}`);
+        return 'added';
     }
 
     private async process(path: string): Promise<IntakeResult> {
