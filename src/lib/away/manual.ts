@@ -5,7 +5,8 @@
  *   "Laden 12.11. 14 kWh 0 €"    on a day; the parts may come in any order
  *   "Laden löschen"              removes the last typed entry
  * Day: "12.11.", "12.11.26", "12.11.2026", "heute", "gestern". A day without year in the future
- * means last year. Text that does not start with "Laden" is no command (the bot is used for other things).
+ * means last year. Without "Laden" only a message of nothing but these parts counts, e.g. "12.10.26 20kwh 0€";
+ * any other text is a normal chat message (the bot is used for other things).
  */
 
 /** What a message asks for */
@@ -24,22 +25,35 @@ function number(s: string): number {
 }
 
 /**
- * Reads a "Laden ..." message.
+ * Reads a typed entry. With "Laden" in front every message is a command (and gets an answer);
+ * without it only a message that consists of nothing but kWh, amount and day (kWh required) counts,
+ * e.g. "12.10.26 20kwh 0€" (owner 2026-11-15) - anything else is a normal chat message.
  *
  * @param message - Value of communicate.request, e.g. "[Name]Laden 14 kWh"
  * @param now - Current time
- * @returns The command, null if the message is no "Laden" command
+ * @returns The command, null if the message is no entry
  */
 export function parseManual(message: string, now: number): ManualCommand | null {
     const body = message.replace(/^\[[^\]]*\]/, '').trim();
     const m = /^laden(?:\s+|$)([\s\S]*)$/i.exec(body);
     if (!m) {
-        return null;
+        const plain = parseParts(body, now);
+        return plain.kind === 'add' ? plain : null;
     }
-    let rest = ` ${m[1].trim()} `;
-    if (/^\s*(löschen|loeschen)\s*$/i.test(rest)) {
+    if (/^\s*(löschen|loeschen)\s*$/i.test(m[1])) {
         return { kind: 'delete' };
     }
+    return parseParts(m[1], now);
+}
+
+/**
+ * kWh, amount and day in any order.
+ *
+ * @param text - Text after "Laden" (or the whole message)
+ * @param now - Current time
+ */
+function parseParts(text: string, now: number): ManualCommand {
+    let rest = ` ${text.trim()} `;
     const take = (re: RegExp): RegExpExecArray | null => {
         const found = re.exec(rest);
         if (found) {

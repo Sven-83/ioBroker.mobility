@@ -47,6 +47,20 @@ describe('away/manual', () => {
         expect(result).to.deep.equal({ kind: 'add', kwh: 20, cost: 0, time: noon(2025, 12, 28) });
     });
 
+    it('takes a message without "Laden" only if it is nothing but kWh, amount and day', () => {
+        expect(parseManual('[Sven]12.10.26 20kwh 0€', NOW)).to.deep.equal({
+            kind: 'add',
+            kwh: 20,
+            cost: 0,
+            time: noon(2026, 10, 12),
+        });
+        expect(parseManual('[Sven]14 kWh', NOW)).to.deep.include({ kind: 'add', kwh: 14 });
+        expect(parseManual('[Sven]20 kWh bei Max', NOW)).to.equal(null);
+        expect(parseManual('[Sven]20 € 12.10.', NOW)).to.equal(null);
+        expect(parseManual('[Sven]0 kWh', NOW)).to.equal(null);
+        expect(parseManual('[Sven]löschen', NOW)).to.equal(null);
+    });
+
     it('knows the delete command', () => {
         expect(parseManual('[Sven]Laden löschen', NOW)).to.deep.equal({ kind: 'delete' });
         expect(parseManual('Laden loeschen', NOW)).to.deep.equal({ kind: 'delete' });

@@ -215,4 +215,12 @@ describe('away/receipt-intake', () => {
         expect(t.added).to.have.length(0);
         expect(t.replies).to.have.length(0);
     });
+
+    it('takes a plain entry without "Laden" and stays silent on other chat', async () => {
+        const t = setup({});
+        expect(await t.intake.handleText('[A]Wie warm ist es?')).to.equal('ignored');
+        expect(await t.intake.handleText('[A]20 kWh bei Max')).to.equal('ignored');
+        expect(await t.intake.handleText('[A]12.10.26 20kwh 0€')).to.equal('added');
+        expect(t.replies).to.deep.equal(['42: 🧾 Eingetragen: 12.10.2026 · 20,00 kWh · 0,00 € (manuell)']);
+    });
 });

@@ -29,12 +29,16 @@ function parseManual(message, now) {
   const body = message.replace(/^\[[^\]]*\]/, "").trim();
   const m = /^laden(?:\s+|$)([\s\S]*)$/i.exec(body);
   if (!m) {
-    return null;
+    const plain = parseParts(body, now);
+    return plain.kind === "add" ? plain : null;
   }
-  let rest = ` ${m[1].trim()} `;
-  if (/^\s*(löschen|loeschen)\s*$/i.test(rest)) {
+  if (/^\s*(löschen|loeschen)\s*$/i.test(m[1])) {
     return { kind: "delete" };
   }
+  return parseParts(m[1], now);
+}
+function parseParts(text, now) {
+  let rest = ` ${text.trim()} `;
   const take = (re) => {
     const found = re.exec(rest);
     if (found) {

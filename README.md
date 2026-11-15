@@ -109,7 +109,8 @@ Fuel price data: [Tankerkönig](https://creativecommons.tankerkoenig.de), licens
 - Subscription invoices (e.g. IONITY) count as costs of their first month, without kWh.
 - Charging without a receipt (friends, free chargers) can be typed to the bot, parts in any order:
   `Laden 14 kWh`, `Laden 14 kWh 5,20 €`, `Laden 12.11. 14 kWh 0 €` (also `heute`, `gestern`);
-  `Laden löschen` removes the last typed entry. Other messages to the bot are ignored.
+  `Laden löschen` removes the last typed entry. Without "Laden" a message counts only if it is nothing but
+  kWh, amount and day (e.g. `12.10.26 20kwh 0€`); other messages to the bot are ignored.
 - Own small PDF reader (no PDF library): it reads the simple, generated receipts only.
 
 ## Developer manual
