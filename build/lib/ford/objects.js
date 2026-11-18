@@ -86,6 +86,16 @@ function vehicleObjects(slot, name) {
       role: "text",
       read: false
     }),
+    state(`${ch}.reachable`, n("Vehicle data arrive", "Fahrzeugdaten kommen an"), {
+      type: "boolean",
+      role: "indicator.reachable"
+    }),
+    state(
+      `${ch}.problem`,
+      n("Why no data (login, rateLimited, noAnswer, error; empty = fine)", "Warum keine Daten (leer = ok)"),
+      { type: "string", role: "text" }
+    ),
+    state(`${ch}.problemSince`, n("No data since", "Keine Daten seit"), { type: "number", role: "value.time" }),
     state(`${ch}.lastUpdate`, n("Time of the vehicle data", "Zeitpunkt der Fahrzeugdaten"), {
       type: "number",
       role: "value.time"

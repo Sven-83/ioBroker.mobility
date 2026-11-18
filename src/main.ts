@@ -19,7 +19,7 @@ import { EaseeStream, type SocketLike } from './lib/easee/stream';
 import { EASEE_ROOT, parseChargerCommandId } from './lib/easee/objects';
 import { readFordConfig } from './lib/ford/config';
 import { FordClient, type FordToken } from './lib/ford/ford-client';
-import { FordService } from './lib/ford/ford-service';
+import { FordService, type FordIssue } from './lib/ford/ford-service';
 import { parseVehicleCommandId, vehicleChannel } from './lib/ford/objects';
 import { readFuelConfig } from './lib/fuel/config';
 import { FuelService } from './lib/fuel/fuel-service';
@@ -51,6 +51,12 @@ class Mobility extends utils.Adapter {
     private readonly connections = new Map<string, boolean>();
     /** Last value written to info.connection (written only on change) */
     private connectionWritten: boolean | undefined;
+    /** Since when a part is not connected */
+    private readonly partDownSince = new Map<string, number>();
+    /** Ford vehicles that are not reachable */
+    private fordIssues: FordIssue[] = [];
+    /** Last text written to info.issues (written only on change) */
+    private issuesWritten: string | undefined;
 
     public constructor(options: Partial<utils.AdapterOptions> = {}) {
         super({
@@ -68,6 +74,7 @@ class Mobility extends utils.Adapter {
      */
     private async onReady(): Promise<void> {
         await this.setState('info.connection', false, true);
+        await this.setState('info.issues', '[]', true);
         this.connectionWritten = false;
         await this.startNotifier();
         await this.startFuel();
@@ -338,6 +345,10 @@ class Mobility extends utils.Adapter {
             ensureObjects: definitions => this.ensureObjects(definitions),
             setState: (id, value) => this.write(id, value),
             onConnection: connected => this.setConnection('ford', connected),
+            onIssues: issues => {
+                this.fordIssues = issues;
+                this.writeIssues();
+            },
             loadHistory: async slot => {
                 try {
                     const { file } = await this.readFileAsync(this.namespace, `ford-history-${slot}.json`);
@@ -546,10 +557,46 @@ class Mobility extends utils.Adapter {
      */
     private setConnection(part: string, connected: boolean): void {
         this.connections.set(part, connected);
+        if (connected) {
+            this.partDownSince.delete(part);
+        } else if (!this.partDownSince.has(part)) {
+            this.partDownSince.set(part, Date.now());
+        }
         const all = [...this.connections.values()].every(Boolean);
         if (all !== this.connectionWritten) {
             this.connectionWritten = all;
             void this.setState('info.connection', all, true);
+        }
+        this.writeIssues();
+    }
+
+    /**
+     * info.issues: which part or which vehicle does not deliver data, so a watcher or the dashboard
+     * can name it while the rest keeps working. JSON list, empty = everything fine.
+     * Entry: { part: fuel|easee|ford, name?, problem?, since, lastData? }
+     */
+    private writeIssues(): void {
+        const list: Record<string, unknown>[] = [];
+        for (const [part, since] of this.partDownSince) {
+            // the Ford part is down only when no vehicle is reachable - those are listed one by one
+            if (part === 'ford' && this.fordIssues.length) {
+                continue;
+            }
+            list.push({ part, since });
+        }
+        for (const issue of this.fordIssues) {
+            list.push({
+                part: 'ford',
+                name: issue.name,
+                problem: issue.problem,
+                since: issue.since,
+                lastData: issue.lastData,
+            });
+        }
+        const text = JSON.stringify(list);
+        if (text !== this.issuesWritten) {
+            this.issuesWritten = text;
+            void this.setState('info.issues', text, true);
         }
     }
 

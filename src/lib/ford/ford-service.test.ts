@@ -1,8 +1,15 @@
 import { expect } from 'chai';
 import type { FordConfig } from './config';
-import { FordLoginRequiredError, FordNetworkError } from './errors';
+import { FordLoginRequiredError, FordNetworkError, FordRateLimitedError } from './errors';
 import type { GarageInfo } from './ford-client';
-import { EXPIRY_WARNING_MS, FordService, type FordApi, type FordDeps } from './ford-service';
+import {
+    EXPIRY_WARNING_MS,
+    FordService,
+    PROBLEM_AFTER_MS,
+    type FordApi,
+    type FordDeps,
+    type FordIssue,
+} from './ford-service';
 
 const CONFIG: FordConfig = {
     enabled: true,
@@ -117,6 +124,7 @@ function setup() {
     const states = new Map<string, ioBroker.StateValue>();
     const logs: { level: string; message: string }[] = [];
     const connection: boolean[] = [];
+    const issues: FordIssue[][] = [];
     const files = new Map<number, string>();
     const log = (level: string) => (message: string) => logs.push({ level, message });
     const deps: FordDeps = {
@@ -133,13 +141,14 @@ function setup() {
             return Promise.resolve();
         },
         onConnection: connected => connection.push(connected),
+        onIssues: list => issues.push(list),
         loadHistory: slot => Promise.resolve(files.get(slot)),
         saveHistory: (slot, text) => {
             files.set(slot, text);
             return Promise.resolve();
         },
     };
-    return { clock, apis, states, logs, connection, files, service: new FordService(CONFIG, deps) };
+    return { clock, apis, states, logs, connection, issues, files, service: new FordService(CONFIG, deps) };
 }
 
 describe('ford/service', () => {
@@ -198,7 +207,100 @@ describe('ford/service', () => {
         await t.clock.next();
         expect(t.apis.get(1)?.loggedIn).to.equal(false);
         expect(t.states.get('ford.vehicle1.login.status')).to.contain('Login needed');
+        // vehicle 2 has no login either -> the whole Ford part is down
         expect(t.connection.at(-1)).to.equal(false);
+    });
+
+    it('names a single vehicle without data and keeps the Ford part connected', async () => {
+        const t = setup();
+        t.apis.get(1)!.loggedIn = true;
+        t.apis.get(2)!.loggedIn = true;
+        await t.service.start();
+        await t.clock.next(); // vehicle 1 ok
+        await t.clock.next(); // vehicle 2 ok
+        expect(t.states.get('ford.vehicle1.reachable')).to.equal(true);
+        expect(t.issues.at(-1)).to.deep.equal([]);
+
+        t.apis.get(1)!.telemetryError = new FordLoginRequiredError('token refresh: rejected (invalid_grant)');
+        await t.clock.next();
+        expect(t.states.get('ford.vehicle1.reachable')).to.equal(false);
+        expect(t.states.get('ford.vehicle1.problem')).to.equal('login');
+        expect(t.states.get('ford.vehicle1.problemSince')).to.equal(t.clock.time);
+        expect(t.states.get('ford.vehicle2.reachable')).to.equal(true);
+        expect(t.connection.at(-1)).to.equal(true);
+        expect(t.issues.at(-1)).to.deep.equal([
+            {
+                slot: 1,
+                name: 'Car A',
+                problem: 'login',
+                since: t.clock.time,
+                lastData: Date.parse('2026-11-05T10:00:00Z'),
+            },
+        ]);
+
+        // after the new login the vehicle counts only when data arrive again
+        await t.service.handleLoginResponse(1, 'http://localhost/fordconnect?code=c2&state=abcdef0123456789');
+        expect(t.states.get('ford.vehicle1.reachable')).to.equal(false);
+        t.apis.get(1)!.telemetryError = undefined;
+        while (t.apis.get(1)!.reads < 3) {
+            await t.clock.next();
+        }
+        expect(t.states.get('ford.vehicle1.reachable')).to.equal(true);
+        expect(t.states.get('ford.vehicle1.problem')).to.equal('');
+        expect(t.issues.at(-1)).to.deep.equal([]);
+    });
+
+    it('counts a vehicle as not reachable only after failing for a while', async () => {
+        const t = setup();
+        t.apis.get(1)!.loggedIn = true;
+        await t.service.start();
+        await t.clock.next();
+        const start = t.clock.time;
+        t.apis.get(1)!.telemetryError = new FordNetworkError('telemetry: no answer (timeout)');
+        await t.clock.next();
+        expect(t.states.get('ford.vehicle1.reachable')).to.equal(true);
+        while (t.clock.time - start < PROBLEM_AFTER_MS) {
+            await t.clock.next();
+        }
+        expect(t.states.get('ford.vehicle1.reachable')).to.equal(false);
+        expect(t.states.get('ford.vehicle1.problem')).to.equal('noAnswer');
+    });
+
+    it('waits longer after each 429 and at least Retry-After', async () => {
+        const t = setup();
+        t.apis.get(1)!.loggedIn = true;
+        await t.service.start();
+        t.apis.get(1)!.telemetryError = new FordRateLimitedError('telemetry: too many requests (HTTP 429)', 62_000);
+        await t.clock.next();
+        expect(t.clock.pending()).to.deep.equal([20 * MIN]);
+        await t.clock.next();
+        expect(t.clock.pending()).to.deep.equal([40 * MIN]);
+        await t.clock.next();
+        expect(t.clock.pending()).to.deep.equal([80 * MIN]);
+        t.apis.get(1)!.telemetryError = new FordRateLimitedError('telemetry: too many requests (HTTP 429)', 300 * MIN);
+        await t.clock.next();
+        expect(t.clock.pending()).to.deep.equal([300 * MIN]);
+        t.apis.get(1)!.telemetryError = undefined;
+        await t.clock.next();
+        expect(t.clock.pending()).to.deep.equal([10 * MIN]);
+    });
+
+    it('reads a vehicle less often while it sends nothing new', async () => {
+        const t = setup();
+        const api = t.apis.get(1)!;
+        api.loggedIn = true;
+        await t.service.start();
+        await t.clock.next();
+        expect(t.clock.pending()).to.deep.equal([10 * MIN]);
+        await t.clock.next(); // same data time
+        expect(t.clock.pending()).to.deep.equal([20 * MIN]);
+        await t.clock.next();
+        expect(t.clock.pending()).to.deep.equal([40 * MIN]);
+        await t.clock.next();
+        expect(t.clock.pending()).to.deep.equal([40 * MIN]);
+        api.telemetry = { ...api.telemetry, updateTime: '2026-11-05T12:00:00Z' };
+        await t.clock.next();
+        expect(t.clock.pending()).to.deep.equal([10 * MIN]);
     });
 
     it('backs off on network errors and logs the outage once', async () => {

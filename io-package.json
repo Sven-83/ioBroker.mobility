@@ -138,6 +138,22 @@
             "native": {}
         },
         {
+            "_id": "info.issues",
+            "type": "state",
+            "common": {
+                "role": "json",
+                "name": {
+                    "en": "Parts or vehicles without data (empty = all fine)",
+                    "de": "Teile oder Fahrzeuge ohne Daten (leer = alles in Ordnung)"
+                },
+                "type": "string",
+                "read": true,
+                "write": false,
+                "def": "[]"
+            },
+            "native": {}
+        },
+        {
             "_id": "info.notifications",
             "type": "state",
             "common": {

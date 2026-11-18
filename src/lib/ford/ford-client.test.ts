@@ -1,7 +1,8 @@
 import { expect } from 'chai';
-import { FordClientRejectedError, FordLoginRequiredError, FordRateLimitedError } from './errors';
+import { FordClientRejectedError, FordLoginRequiredError, FordRateLimitedError, FordResponseError } from './errors';
 import {
     FordClient,
+    INTERNAL_ERROR_RETRIES,
     TOKEN_MARGIN_MS,
     authTimeFromIdToken,
     b2cErrorCode,
@@ -213,10 +214,42 @@ describe('ford/client', () => {
                 body: { error: 'invalid_grant', error_description: 'AADB2C90085: secret stuff' },
             })),
         });
+        // Ford's "internal error": keep the login and try again, a new login only after several in a row
+        for (let i = 0; i < INTERNAL_ERROR_RETRIES; i++) {
+            const retry = await rejection(client.getTelemetry());
+            expect(retry).to.be.instanceOf(FordResponseError);
+            expect(retry.message).to.contain('AADB2C90085');
+            expect(retry.message).not.to.contain('secret stuff');
+            expect(store.token?.refresh).to.equal('r1');
+        }
         const error = await rejection(client.getTelemetry());
         expect(error).to.be.instanceOf(FordLoginRequiredError);
         expect(error.message).to.contain('invalid_grant, AADB2C90085');
         expect(error.message).not.to.contain('secret stuff');
+    });
+
+    it('starts counting the internal Ford error again after a working refresh', async () => {
+        const store = new MemoryStore();
+        store.token = { access: 'a1', refresh: 'r1', expiresAt: 0, authTime: null };
+        let fail = true;
+        const client = new FordClient(CLIENT, SECRET, REDIRECT, store, {
+            now: () => 0,
+            fetch: server(call => {
+                if (call.method !== 'POST') {
+                    return { status: 200, body: { metrics: {} } };
+                }
+                return fail
+                    ? { status: 400, body: { error: 'invalid_grant', error_description: 'AADB2C90085: x' } }
+                    : { status: 200, body: { access_token: 'a2', expires_in: 0.001 } };
+            }),
+        });
+        for (let i = 0; i < INTERNAL_ERROR_RETRIES; i++) {
+            expect(await rejection(client.getTelemetry())).to.be.instanceOf(FordResponseError);
+        }
+        fail = false;
+        await client.getTelemetry();
+        fail = true;
+        expect(await rejection(client.getTelemetry())).to.be.instanceOf(FordResponseError);
     });
 
     it('reports a rejected client, 429 and never leaks secrets', async () => {

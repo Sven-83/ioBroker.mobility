@@ -9,6 +9,7 @@
  *    ├─ login.status            text     OK / login needed / error
  *    ├─ login.expires           time     the browser login expires about one year after it was made
  *    ├─ login.token             (encrypted, internal)
+ *    ├─ reachable, problem, problemSince   data arrive? (login / rateLimited / noAnswer / error)
  *    ├─ lastUpdate, fuelLevel, fuelRange (empty for BEV), soc, evRange, plugStatus, chargeStatus,
  *    │  timeToFull (empty when unplugged), energyRemaining, batteryCapacity, evMaxRange, batteryTemp,
  *    │  chargePower, odometer, battery12v, battery12vVoltage, battery12vLow, oilLife, outsideTemp,
@@ -122,6 +123,16 @@ export function vehicleObjects(slot: number, name: string): ObjectDefinition[] {
             role: 'text',
             read: false,
         }),
+        state(`${ch}.reachable`, n('Vehicle data arrive', 'Fahrzeugdaten kommen an'), {
+            type: 'boolean',
+            role: 'indicator.reachable',
+        }),
+        state(
+            `${ch}.problem`,
+            n('Why no data (login, rateLimited, noAnswer, error; empty = fine)', 'Warum keine Daten (leer = ok)'),
+            { type: 'string', role: 'text' },
+        ),
+        state(`${ch}.problemSince`, n('No data since', 'Keine Daten seit'), { type: 'number', role: 'value.time' }),
         state(`${ch}.lastUpdate`, n('Time of the vehicle data', 'Zeitpunkt der Fahrzeugdaten'), {
             type: 'number',
             role: 'value.time',

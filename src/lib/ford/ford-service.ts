@@ -10,8 +10,16 @@
  *     visible) and starts polling.
  *
  * Polling: every 5-60 min (default 10) plus a random 0-30 s, vehicles one after another;
- * garage (model) once per login and day. Errors: backoff up to 60 min, 429 waits Retry-After.
+ * garage (model) once per login and day. A vehicle whose data time does not change (parked,
+ * no reception) is read less often: interval x2, x4, at most IDLE_MAX_MS; back to normal as soon
+ * as new data arrive. Errors: backoff up to 60 min; 429 starts at twice the interval and doubles
+ * up to RATE_LIMIT_MAX_MS (at least Retry-After).
  * A rejected refresh token -> new login needed (status + log), polling of that vehicle pauses.
+ *
+ * Status per vehicle (ford.vehicleN.reachable/problem/problemSince): a vehicle counts as not
+ * reachable at once when a login is needed, otherwise when its reads fail for PROBLEM_AFTER_MS.
+ * The Ford part (info.connection) stays connected while at least one vehicle is reachable;
+ * single vehicles are reported through onIssues (info.issues) instead.
  */
 
 import { describeError } from '../fuel/errors';
@@ -27,13 +35,25 @@ import {
     parseRedirect,
     type GarageInfo,
 } from './ford-client';
-import { FordAbortedError, FordClientRejectedError, FordLoginRequiredError, FordRateLimitedError } from './errors';
+import {
+    FordAbortedError,
+    FordClientRejectedError,
+    FordLoginRequiredError,
+    FordNetworkError,
+    FordRateLimitedError,
+} from './errors';
 import { rootObjects, vehicleChannel, vehicleObjects } from './objects';
 import { battery12vLow, isBev, parseTelemetry, sanitize } from './telemetry';
 import { computeWarnings, worstLevel } from './warnings';
 import { VehicleHistory } from './history';
 
 export const MAX_BACKOFF_MS = 60 * 60_000;
+/** Longest pause for a vehicle that sends nothing new */
+export const IDLE_MAX_MS = 2 * 3_600_000;
+/** Longest pause after repeated 429 answers */
+export const RATE_LIMIT_MAX_MS = 3 * 3_600_000;
+/** Failing reads this long -> vehicle counts as not reachable */
+export const PROBLEM_AFTER_MS = 60 * 60_000;
 /** Warn this long before the browser login expires */
 export const EXPIRY_WARNING_MS = 7 * 24 * 3_600_000;
 /** Garage info is read again after this time */
@@ -79,10 +99,29 @@ export interface FordDeps {
     setState(id: string, value: ioBroker.StateValue): Promise<void>;
     /** Connection status of the Ford part */
     onConnection(connected: boolean): void;
+    /** Vehicles that are not reachable (empty list = all fine) */
+    onIssues?(issues: FordIssue[]): void;
     /** Reads the stored history of one vehicle (undefined = none yet) */
     loadHistory(slot: number): Promise<string | undefined>;
     /** Stores the history of one vehicle */
     saveHistory(slot: number, text: string): Promise<void>;
+}
+
+/** Why a vehicle delivers no data */
+export type FordProblem = 'login' | 'rateLimited' | 'noAnswer' | 'error';
+
+/** One vehicle that is not reachable */
+export interface FordIssue {
+    /** Vehicle slot */
+    slot: number;
+    /** Display name */
+    name: string;
+    /** Why */
+    problem: FordProblem;
+    /** Since when (epoch ms) */
+    since: number;
+    /** Time of the last vehicle data (epoch ms), null if unknown */
+    lastData: number | null;
 }
 
 interface Vehicle {
@@ -93,7 +132,17 @@ interface Vehicle {
     /** Last garage read (epoch ms), null = not read yet */
     garageAt: number | null;
     failures: number;
+    /** 429 answers in a row */
+    rateHits: number;
     failureLog: FailureLog;
+    /** Current problem (also before it counts as not reachable), null = fine */
+    problem: { kind: FordProblem; since: number; atOnce: boolean } | null;
+    /** Last value written to reachable (written only on change) */
+    reachableWritten: boolean | undefined;
+    /** Data time of the last read (epoch ms), null = unknown */
+    lastData: number | null;
+    /** Reads in a row without new data */
+    idle: number;
     /** Pending poll timer (wrapped: TimerHandle is unknown) */
     timer: { handle: TimerHandle } | undefined;
     expiryWarned: boolean;
@@ -128,7 +177,12 @@ export class FordService {
             loggedIn: false,
             garageAt: null,
             failures: 0,
+            rateHits: 0,
             failureLog: new FailureLog(),
+            problem: null,
+            reachableWritten: undefined,
+            lastData: null,
+            idle: 0,
             timer: undefined,
             expiryWarned: false,
             weak12v: undefined,
@@ -233,6 +287,8 @@ export class FordService {
         v.loggedIn = true;
         v.loginState = undefined;
         v.failures = 0;
+        v.rateHits = 0;
+        v.idle = 0;
         v.garageAt = null;
         log.info(`Ford ${v.config.name}: login OK`);
         await this.deps.setState(`${ch}.login.status`, 'OK');
@@ -277,13 +333,24 @@ export class FordService {
                 }
             }
             const body = await v.client.getTelemetry();
-            await this.apply(v, body);
+            const dataTime = await this.apply(v, body);
             v.failures = 0;
+            v.rateHits = 0;
+            // parked or no reception: the vehicle sends nothing new -> read it less often
+            if (dataTime !== null && dataTime === v.lastData) {
+                v.idle++;
+            } else {
+                v.idle = 0;
+            }
+            if (dataTime !== null) {
+                v.lastData = dataTime;
+            }
+            nextDelay = Math.min(intervalMs * 2 ** Math.min(v.idle, 2), Math.max(IDLE_MAX_MS, intervalMs));
             const outage = v.failureLog.recovered(this.deps.now());
             if (outage !== undefined) {
                 log.info(`Ford ${v.config.name}: reachable again (outage ${formatDuration(outage)})`);
             }
-            this.updateConnection();
+            await this.setProblem(v, null);
             await this.checkExpiry(v);
         } catch (error) {
             if (error instanceof FordAbortedError || this.stopped) {
@@ -297,17 +364,23 @@ export class FordService {
             if (error instanceof FordClientRejectedError) {
                 log.error(`Ford: ${describeError(error)} - check client ID/secret in the instance settings`);
                 v.loggedIn = false;
-                this.updateConnection();
+                await this.setProblem(v, 'error', true);
                 return;
             }
             v.failures++;
-            nextDelay = Math.min(intervalMs * 2 ** (v.failures - 1), Math.max(MAX_BACKOFF_MS, intervalMs));
             if (error instanceof FordRateLimitedError) {
-                nextDelay = Math.max(nextDelay, error.waitMs);
+                // Ford counts every call: wait longer each time instead of asking again soon
+                v.rateHits++;
+                nextDelay = Math.max(
+                    Math.min(2 * intervalMs * 2 ** (v.rateHits - 1), Math.max(RATE_LIMIT_MAX_MS, intervalMs)),
+                    error.waitMs,
+                );
+            } else {
+                nextDelay = Math.min(intervalMs * 2 ** (v.failures - 1), Math.max(MAX_BACKOFF_MS, intervalMs));
             }
             const level = v.failureLog.failed(this.deps.now());
             log[level](`Ford ${v.config.name}: ${describeError(error)}; next try in ${formatDuration(nextDelay)}`);
-            this.deps.onConnection(false);
+            await this.setProblem(v, problemOf(error));
         }
         this.schedulePoll(v, nextDelay + Math.floor(this.deps.random() * 30_000));
     }
@@ -317,8 +390,9 @@ export class FordService {
      *
      * @param v - Vehicle
      * @param body - Telemetry answer
+     * @returns Time of the vehicle data (epoch ms), null if the answer has none
      */
-    private async apply(v: Vehicle, body: Record<string, unknown>): Promise<void> {
+    private async apply(v: Vehicle, body: Record<string, unknown>): Promise<number | null> {
         const ch = vehicleChannel(v.config.slot);
         const st = parseTelemetry(body);
         const set = async (key: string, value: ioBroker.StateValue | null): Promise<void> => {
@@ -401,6 +475,7 @@ export class FordService {
         await set('warningCount', warnings.length);
         await set('metricKeys', JSON.stringify(st.metricKeys));
         await set('raw', JSON.stringify(sanitize(body)));
+        return st.updateTime;
     }
 
     /**
@@ -479,12 +554,63 @@ export class FordService {
                 `the FordPass account, pick "${v.config.name}" and paste the address of the page shown afterwards ` +
                 `into ${ch}.login.response`,
         );
+        await this.setProblem(v, 'login', true);
+    }
+
+    /**
+     * Notes the problem of one vehicle (null = fine) and updates its status states.
+     *
+     * @param v - Vehicle
+     * @param kind - Problem, null when the read worked
+     * @param atOnce - Counts as not reachable immediately (login needed, client rejected)
+     */
+    private async setProblem(v: Vehicle, kind: FordProblem | null, atOnce = false): Promise<void> {
+        const now = this.deps.now();
+        if (kind === null) {
+            v.problem = null;
+        } else if (v.problem === null) {
+            v.problem = { kind, since: now, atOnce };
+        } else {
+            // keep the start of an ongoing outage, only the kind changes
+            v.problem.kind = kind;
+            v.problem.atOnce = v.problem.atOnce || atOnce;
+        }
+        const reachable = this.isReachable(v, now);
+        const ch = vehicleChannel(v.config.slot);
+        if (reachable !== v.reachableWritten) {
+            v.reachableWritten = reachable;
+            await this.deps.setState(`${ch}.reachable`, reachable);
+            await this.deps.setState(`${ch}.problemSince`, reachable ? null : (v.problem?.since ?? now));
+        }
+        await this.deps.setState(`${ch}.problem`, reachable ? '' : (v.problem?.kind ?? 'login'));
         this.updateConnection();
     }
 
-    /** info.connection of the Ford part: all vehicles logged in and without failure */
+    /**
+     * @param v - Vehicle
+     * @param now - Current time
+     */
+    private isReachable(v: Vehicle, now: number): boolean {
+        if (v.problem === null) {
+            return v.loggedIn;
+        }
+        return !(v.problem.atOnce || v.problem.kind === 'login' || now - v.problem.since >= PROBLEM_AFTER_MS);
+    }
+
+    /** info.connection of the Ford part: at least one vehicle reachable; the others go to onIssues */
     private updateConnection(): void {
-        this.deps.onConnection(this.vehicles.every(v => v.loggedIn && v.failures === 0));
+        const now = this.deps.now();
+        const down = this.vehicles.filter(v => !this.isReachable(v, now));
+        this.deps.onConnection(down.length < this.vehicles.length);
+        this.deps.onIssues?.(
+            down.map(v => ({
+                slot: v.config.slot,
+                name: v.config.name,
+                problem: v.problem?.kind ?? 'login',
+                since: v.problem?.since ?? now,
+                lastData: v.lastData,
+            })),
+        );
     }
 
     /**
@@ -506,6 +632,19 @@ export class FordService {
         v.timer = { handle };
         this.timers.add(handle);
     }
+}
+
+/**
+ * @param error - Error of a read
+ */
+function problemOf(error: unknown): FordProblem {
+    if (error instanceof FordRateLimitedError) {
+        return 'rateLimited';
+    }
+    if (error instanceof FordNetworkError) {
+        return 'noAnswer';
+    }
+    return 'error';
 }
 
 /**

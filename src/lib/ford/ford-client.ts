@@ -36,6 +36,8 @@ export const HTTP_TIMEOUT_MS = 45_000;
 export const TOKEN_MARGIN_MS = 2 * 60_000;
 /** Pause after a 429 without Retry-After (reference: 62 s) */
 export const DEFAULT_RATE_LIMIT_WAIT_MS = 62_000;
+/** Refreshes answered with AADB2C90085 that are retried before a new login is needed */
+export const INTERNAL_ERROR_RETRIES = 3;
 /** The login expires this long after auth_time */
 export const LOGIN_LIFETIME_MS = 365 * 24 * 3_600_000;
 
@@ -165,6 +167,8 @@ export class FordClient {
     private token: FordToken | undefined;
     private loaded = false;
     private pending: Promise<FordToken> | undefined;
+    /** Refreshes in a row that Ford answered with its internal error AADB2C90085 */
+    private internalErrors = 0;
 
     /**
      * @param clientId - App client ID
@@ -295,6 +299,7 @@ export class FordClient {
             throw new FordLoginRequiredError('no refresh token');
         }
         const body = await this.tokenRequest({ grant_type: 'refresh_token', refresh_token: old.refresh });
+        this.internalErrors = 0;
         this.token = this.parseToken(body, old.refresh, old.authTime);
         await this.store.save(this.token);
         return this.token;
@@ -329,6 +334,16 @@ export class FordClient {
         const b2c = b2cErrorCode(text);
         if (error === 'invalid_client' || error === 'unauthorized_client') {
             throw new FordClientRejectedError(`${label}: client ID/secret rejected (${error})`, response.status);
+        }
+        if (
+            params.grant_type === 'refresh_token' &&
+            b2c === B2C_SHARED_ACCESS_ERROR &&
+            this.internalErrors < INTERNAL_ERROR_RETRIES
+        ) {
+            // AADB2C90085 = "internal error" at Ford (18.11.2026: the stored login was dropped because of it).
+            // Keep the refresh token and try again later; only after several in a row a new login is needed.
+            this.internalErrors++;
+            throw new FordResponseError(`${label}: Ford reported ${b2c}, keeping the login and trying again`);
         }
         if (response.status === 400 || response.status === 401) {
             // invalid_grant: code used/expired or refresh token expired -> new browser login

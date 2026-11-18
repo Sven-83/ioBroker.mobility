@@ -24,6 +24,7 @@ __export(ford_client_exports, {
   DEFAULT_RATE_LIMIT_WAIT_MS: () => DEFAULT_RATE_LIMIT_WAIT_MS,
   FordClient: () => FordClient,
   HTTP_TIMEOUT_MS: () => HTTP_TIMEOUT_MS,
+  INTERNAL_ERROR_RETRIES: () => INTERNAL_ERROR_RETRIES,
   LOGIN_LIFETIME_MS: () => LOGIN_LIFETIME_MS,
   QUERY_PATH: () => QUERY_PATH,
   TOKEN_MARGIN_MS: () => TOKEN_MARGIN_MS,
@@ -43,6 +44,7 @@ const QUERY_PATH = "/fcon-query/v1";
 const HTTP_TIMEOUT_MS = 45e3;
 const TOKEN_MARGIN_MS = 2 * 6e4;
 const DEFAULT_RATE_LIMIT_WAIT_MS = 62e3;
+const INTERNAL_ERROR_RETRIES = 3;
 const LOGIN_LIFETIME_MS = 365 * 24 * 36e5;
 function buildAuthorizeUrl(clientId, redirectUri, state, baseUrl = BASE_URL) {
   const query = new URLSearchParams({
@@ -114,6 +116,8 @@ class FordClient {
   token;
   loaded = false;
   pending;
+  /** Refreshes in a row that Ford answered with its internal error AADB2C90085 */
+  internalErrors = 0;
   /** A token is stored (the user has logged in at least once) */
   async hasLogin() {
     await this.loadToken();
@@ -216,6 +220,7 @@ class FordClient {
       throw new import_errors.FordLoginRequiredError("no refresh token");
     }
     const body = await this.tokenRequest({ grant_type: "refresh_token", refresh_token: old.refresh });
+    this.internalErrors = 0;
     this.token = this.parseToken(body, old.refresh, old.authTime);
     await this.store.save(this.token);
     return this.token;
@@ -250,6 +255,10 @@ class FordClient {
     const b2c = b2cErrorCode(text);
     if (error === "invalid_client" || error === "unauthorized_client") {
       throw new import_errors.FordClientRejectedError(`${label}: client ID/secret rejected (${error})`, response.status);
+    }
+    if (params.grant_type === "refresh_token" && b2c === B2C_SHARED_ACCESS_ERROR && this.internalErrors < INTERNAL_ERROR_RETRIES) {
+      this.internalErrors++;
+      throw new import_errors.FordResponseError(`${label}: Ford reported ${b2c}, keeping the login and trying again`);
     }
     if (response.status === 400 || response.status === 401) {
       const reason = [error || `HTTP ${response.status}`, b2c].filter(Boolean).join(", ");
@@ -350,6 +359,7 @@ function oauthError(text) {
   DEFAULT_RATE_LIMIT_WAIT_MS,
   FordClient,
   HTTP_TIMEOUT_MS,
+  INTERNAL_ERROR_RETRIES,
   LOGIN_LIFETIME_MS,
   QUERY_PATH,
   TOKEN_MARGIN_MS,

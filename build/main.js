@@ -61,6 +61,12 @@ class Mobility extends utils.Adapter {
   connections = /* @__PURE__ */ new Map();
   /** Last value written to info.connection (written only on change) */
   connectionWritten;
+  /** Since when a part is not connected */
+  partDownSince = /* @__PURE__ */ new Map();
+  /** Ford vehicles that are not reachable */
+  fordIssues = [];
+  /** Last text written to info.issues (written only on change) */
+  issuesWritten;
   constructor(options = {}) {
     super({
       ...options,
@@ -76,6 +82,7 @@ class Mobility extends utils.Adapter {
    */
   async onReady() {
     await this.setState("info.connection", false, true);
+    await this.setState("info.issues", "[]", true);
     this.connectionWritten = false;
     await this.startNotifier();
     await this.startFuel();
@@ -337,6 +344,10 @@ class Mobility extends utils.Adapter {
       ensureObjects: (definitions) => this.ensureObjects(definitions),
       setState: (id, value) => this.write(id, value),
       onConnection: (connected) => this.setConnection("ford", connected),
+      onIssues: (issues) => {
+        this.fordIssues = issues;
+        this.writeIssues();
+      },
       loadHistory: async (slot) => {
         try {
           const { file } = await this.readFileAsync(this.namespace, `ford-history-${slot}.json`);
@@ -533,10 +544,44 @@ class Mobility extends utils.Adapter {
    */
   setConnection(part, connected) {
     this.connections.set(part, connected);
+    if (connected) {
+      this.partDownSince.delete(part);
+    } else if (!this.partDownSince.has(part)) {
+      this.partDownSince.set(part, Date.now());
+    }
     const all = [...this.connections.values()].every(Boolean);
     if (all !== this.connectionWritten) {
       this.connectionWritten = all;
       void this.setState("info.connection", all, true);
+    }
+    this.writeIssues();
+  }
+  /**
+   * info.issues: which part or which vehicle does not deliver data, so a watcher or the dashboard
+   * can name it while the rest keeps working. JSON list, empty = everything fine.
+   * Entry: { part: fuel|easee|ford, name?, problem?, since, lastData? }
+   */
+  writeIssues() {
+    const list = [];
+    for (const [part, since] of this.partDownSince) {
+      if (part === "ford" && this.fordIssues.length) {
+        continue;
+      }
+      list.push({ part, since });
+    }
+    for (const issue of this.fordIssues) {
+      list.push({
+        part: "ford",
+        name: issue.name,
+        problem: issue.problem,
+        since: issue.since,
+        lastData: issue.lastData
+      });
+    }
+    const text = JSON.stringify(list);
+    if (text !== this.issuesWritten) {
+      this.issuesWritten = text;
+      void this.setState("info.issues", text, true);
     }
   }
   /**
